@@ -1,29 +1,27 @@
 import { createContext, useContext, useState, useCallback } from 'react'
 import { calcMonthlySalary } from '../services/salary'
-import { FIREBASE_CONFIGURED } from '../services/firebase'
+import { useAuth } from './AuthContext'
 
 const SalaryContext = createContext(null)
 
-// Dr. Muirhead's actual October 2024 duties (9 total — 7 weekday, 1 Saturday, 1 Holiday)
-const DEMO_DUTIES = [
-  { id: 'demo-1', date: '2024-10-03', typeId: 'weekday',  taxi: false },
-  { id: 'demo-2', date: '2024-10-08', typeId: 'weekday',  taxi: false },
-  { id: 'demo-3', date: '2024-10-09', typeId: 'weekday',  taxi: false },
-  { id: 'demo-4', date: '2024-10-18', typeId: 'weekday',  taxi: false },
-  { id: 'demo-5', date: '2024-10-19', typeId: 'saturday', taxi: false },
-  { id: 'demo-6', date: '2024-10-21', typeId: 'holiday',  taxi: false },
-  { id: 'demo-7', date: '2024-10-24', typeId: 'weekday',  taxi: false },
-  { id: 'demo-8', date: '2024-10-28', typeId: 'weekday',  taxi: false },
-  { id: 'demo-9', date: '2024-10-29', typeId: 'weekday',  taxi: false },
-]
-
 export function SalaryProvider({ children }) {
-  // Demo mode defaults to October 2024 (Dr. Muirhead's roster month)
-  const isDemo = !FIREBASE_CONFIGURED
+  const { user } = useAuth()
+  // Demo mode ONLY for the hardcoded demo user (no Firebase configured at all)
+  const isDemo = user?.uid === 'demo'
   const today = new Date()
-  const [month, setMonth] = useState(isDemo ? 9 : today.getMonth())   // October = index 9
+  const [month, setMonth] = useState(isDemo ? 9 : today.getMonth())
   const [year,  setYear]  = useState(isDemo ? 2024 : today.getFullYear())
-  const [duties, setDuties] = useState(isDemo ? DEMO_DUTIES : [])
+  const [duties, setDuties] = useState(isDemo ? [
+    { id: 'demo-1', date: '2024-10-03', typeId: 'weekday',  taxi: false },
+    { id: 'demo-2', date: '2024-10-08', typeId: 'weekday',  taxi: false },
+    { id: 'demo-3', date: '2024-10-09', typeId: 'weekday',  taxi: false },
+    { id: 'demo-4', date: '2024-10-18', typeId: 'weekday',  taxi: false },
+    { id: 'demo-5', date: '2024-10-19', typeId: 'saturday', taxi: false },
+    { id: 'demo-6', date: '2024-10-21', typeId: 'holiday',  taxi: false },
+    { id: 'demo-7', date: '2024-10-24', typeId: 'weekday',  taxi: false },
+    { id: 'demo-8', date: '2024-10-28', typeId: 'weekday',  taxi: false },
+    { id: 'demo-9', date: '2024-10-29', typeId: 'weekday',  taxi: false },
+  ] : [])
 
   function addDuty(dateStr, typeId, taxi = false) {
     setDuties(prev => {

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { FileText, Download, BarChart2, RefreshCw, Trash2 } from 'lucide-react'
+import { FileText, Download, BarChart2, Trash2, Save, CheckCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSalary } from '../context/SalaryContext'
 import DutyCalendar from '../components/DutyCalendar'
@@ -7,6 +7,7 @@ import SalaryBreakdown from '../components/SalaryBreakdown'
 import RosterUpload from '../components/RosterUpload'
 import { exportSalaryPDF } from '../services/exportPdf'
 import { exportSalaryExcel } from '../services/exportExcel'
+import { saveMonthRecord } from '../services/firestoreDb'
 import { GRADES } from '../data/rates'
 
 const TABS = ['Calendar', 'Roster Upload', 'Salary Summary']
@@ -15,6 +16,8 @@ export default function Dashboard() {
   const { user, profile } = useAuth()
   const { month, year, duties, getSummary, clearDuties } = useSalary()
   const [tab, setTab] = useState(0)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
 
   const gradeId = profile?.gradeId
   const baseSalary = profile?.baseSalary || 0
@@ -34,6 +37,15 @@ export default function Dashboard() {
 
   function handleExportExcel() {
     exportSalaryExcel({ summary, profile, month, year })
+  }
+
+  async function handleSaveRecord() {
+    if (!user || duties.length === 0) return
+    setSaving(true)
+    await saveMonthRecord({ userId: user.uid, month, year, duties, summary, profile })
+    setSaving(false)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 3000)
   }
 
   if (!profile?.gradeId) {
@@ -77,6 +89,14 @@ export default function Dashboard() {
           >
             <Download size={14} />
             Excel
+          </button>
+          <button
+            onClick={handleSaveRecord}
+            disabled={duties.length === 0 || saving}
+            className="flex items-center gap-1.5 text-sm border border-green-500 text-green-700 hover:bg-green-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+          >
+            {saved ? <CheckCircle size={14} /> : <Save size={14} />}
+            {saved ? 'Saved!' : saving ? 'Saving…' : 'Save'}
           </button>
           <button
             onClick={handleExportPDF}

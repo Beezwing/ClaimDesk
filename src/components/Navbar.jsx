@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { LogOut, User, BarChart2 } from 'lucide-react'
+import { LogOut, User, BarChart2, Clock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 export default function Navbar() {
@@ -21,6 +21,10 @@ export default function Navbar() {
 
         {user ? (
           <div className="flex items-center gap-3">
+            <Link to="/history" className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900">
+              <Clock size={16} />
+              <span className="hidden sm:inline">History</span>
+            </Link>
             <Link to="/profile" className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900">
               <User size={16} />
               <span className="hidden sm:inline">{profile?.name || user.email}</span>

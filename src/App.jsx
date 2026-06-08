@@ -7,6 +7,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
+import History from './pages/History'
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth()
@@ -24,6 +25,7 @@ function AppRoutes() {
         <Route path="/register" element={user ? <Navigate to="/dashboard" replace /> : <Register />} />
         <Route path="/dashboard" element={<ProtectedRoute><SalaryProvider><Dashboard /></SalaryProvider></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+        <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
