@@ -6,12 +6,6 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# Netlify Functions must come before the SPA catch-all
-[[redirects]]
-  from = "/.netlify/functions/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
-
 [[redirects]]
   from = "/*"
   to = "/index.html"
