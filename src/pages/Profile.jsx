@@ -1,21 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { GRADES, SALARY_SCALES, getMonthlySalary } from '../data/rates'
-import { CheckCircle } from 'lucide-react'
-
-const HOSPITALS = [
-  'Kingston Public Hospital (KPH)',
-  'University Hospital of the West Indies (UHWI)',
-  'Cornwall Regional Hospital',
-  'Spanish Town Hospital',
-  'Mandeville Regional Hospital',
-  'May Pen Hospital',
-  "St. Ann's Bay Regional Hospital",
-  'Port Maria Hospital',
-  'Savanna-la-Mar Hospital',
-  'Black River Hospital',
-  'Other',
-]
+import { HOSPITALS } from '../data/constants'
+import { CheckCircle, Bell, BellOff } from 'lucide-react'
+import { enableNotifications, requestNotificationPermission } from '../services/notifications'
 
 export default function Profile() {
   const { profile, updateUserProfile } = useAuth()
@@ -31,6 +19,18 @@ export default function Profile() {
   })
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [notifStatus, setNotifStatus] = useState(
+    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
+  )
+
+  useEffect(() => {
+    if (typeof Notification !== 'undefined') setNotifStatus(Notification.permission)
+  }, [])
+
+  async function handleEnableNotifications() {
+    const ok = await enableNotifications()
+    setNotifStatus(ok ? 'granted' : 'denied')
+  }
 
   function update(field, value) {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -101,7 +101,7 @@ export default function Profile() {
             <optgroup label="Doctors (JMDA rates)">
               {doctorGrades.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
             </optgroup>
-            <optgroup label="Nurses (placeholder rates — to be updated)">
+            <optgroup label="Registered Nurses (HPC/RN)">
               {nurseGrades.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
             </optgroup>
           </select>
@@ -175,6 +175,29 @@ export default function Profile() {
           </label>
         )}
 
+        {/* Notification toggle */}
+        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
+          <div className="flex items-center gap-3">
+            {notifStatus === 'granted' ? <Bell size={18} className="text-blue-600" /> : <BellOff size={18} className="text-gray-400" />}
+            <div>
+              <p className="text-sm font-medium text-gray-800">Monthly reminders</p>
+              <p className="text-xs text-gray-400">Reminder on the 25th to log your duties</p>
+            </div>
+          </div>
+          {notifStatus === 'granted' ? (
+            <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">On</span>
+          ) : notifStatus === 'denied' ? (
+            <span className="text-xs text-gray-400">Blocked in browser</span>
+          ) : notifStatus === 'unsupported' ? (
+            <span className="text-xs text-gray-400">Not supported</span>
+          ) : (
+            <button type="button" onClick={handleEnableNotifications}
+              className="text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
+              Enable
+            </button>
+          )}
+        </div>
+
         <button
           type="submit"
           disabled={loading}
@@ -186,8 +209,8 @@ export default function Profile() {
         </button>
       </form>
 
-      <div className="mt-6 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-        <strong>Note:</strong> Nurse rates are placeholder values until official rate sheets are received. Doctor (JMDA) rates are accurate as of December 2021. Confirm with your HR if rates have been updated.
+      <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+        <strong>Rates source:</strong> Doctor rates from JMDA salary scales. Nurse rates from MOF Salary Scale 26.5.23. Confirm with your HR if rates have been updated since.
       </div>
     </div>
   )

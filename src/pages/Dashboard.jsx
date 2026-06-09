@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { FileText, Download, BarChart2, Trash2, Save, CheckCircle, Sparkles, X } from 'lucide-react'
+import { FileText, Download, BarChart2, Trash2, Save, CheckCircle, Sparkles, X, Lock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSalary } from '../context/SalaryContext'
 import DutyCalendar from '../components/DutyCalendar'
@@ -23,6 +23,7 @@ export default function Dashboard() {
   const baseSalary = profile?.baseSalary || 0
   const crossCoverage = profile?.crossCoverage || false
   const grade = GRADES.find(g => g.id === gradeId)
+  const isPro = profile?.subscription === 'pro' || profile?.subscription === 'demo'
 
   const summary = useMemo(
     () => getSummary(gradeId, baseSalary, crossCoverage),
@@ -31,7 +32,6 @@ export default function Dashboard() {
 
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
-  // Subscription banner — swap SUBSCRIBE_URL once Lemon Squeezy is ready
   const SUBSCRIBE_URL = 'https://tuninlifestyle.gumroad.com/l/uhjlp'
   const [bannerDismissed, setBannerDismissed] = useState(
     () => sessionStorage.getItem('claimdesk_banner_dismissed') === '1'
@@ -40,12 +40,15 @@ export default function Dashboard() {
     sessionStorage.setItem('claimdesk_banner_dismissed', '1')
     setBannerDismissed(true)
   }
+  const showBanner = !isPro && !bannerDismissed
 
   function handleExportPDF() {
+    if (!isPro) { alert('Upgrade to ClaimDesk Pro to export PDF reports.'); return }
     exportSalaryPDF({ summary, profile, month, year })
   }
 
   function handleExportExcel() {
+    if (!isPro) { alert('Upgrade to ClaimDesk Pro to export Excel reports.'); return }
     exportSalaryExcel({ summary, profile, month, year })
   }
 
@@ -72,7 +75,7 @@ export default function Dashboard() {
     <div className="max-w-6xl mx-auto px-4 py-6">
 
       {/* Subscription banner */}
-      {!bannerDismissed && (
+      {showBanner && (
         <div className="relative flex items-center justify-between gap-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl px-4 py-3 mb-5 shadow-sm">
           <div className="flex items-center gap-2.5 min-w-0">
             <Sparkles size={16} className="shrink-0 opacity-90" />
@@ -127,7 +130,7 @@ export default function Dashboard() {
             disabled={duties.length === 0}
             className="flex items-center gap-1.5 text-sm border border-gray-300 hover:border-gray-400 text-gray-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
           >
-            <Download size={14} />
+            {isPro ? <Download size={14} /> : <Lock size={14} />}
             Excel
           </button>
           <button
@@ -143,7 +146,7 @@ export default function Dashboard() {
             disabled={duties.length === 0}
             className="flex items-center gap-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
           >
-            <FileText size={14} />
+            {isPro ? <FileText size={14} /> : <Lock size={14} />}
             Export PDF
           </button>
         </div>
@@ -178,7 +181,19 @@ export default function Dashboard() {
       {tab === 0 && <DutyCalendar gradeId={gradeId} crossCoverage={crossCoverage} />}
       {tab === 1 && (
         <div className="max-w-lg">
-          <RosterUpload gradeId={gradeId} />
+          {isPro ? (
+            <RosterUpload gradeId={gradeId} />
+          ) : (
+            <div className="text-center py-16 px-6 bg-white rounded-2xl border border-gray-200">
+              <Lock size={32} className="mx-auto mb-4 text-gray-300" />
+              <h3 className="font-semibold text-gray-800 mb-2">Pro Feature</h3>
+              <p className="text-sm text-gray-500 mb-5">AI roster scan is available on ClaimDesk Pro.</p>
+              <a href={SUBSCRIBE_URL} target="_blank" rel="noopener noreferrer"
+                className="inline-block bg-blue-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-blue-700 transition-colors">
+                Upgrade to Pro — $4.99/month
+              </a>
+            </div>
+          )}
         </div>
       )}
       {tab === 2 && (

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { BarChart2, CheckCircle, XCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { GRADES, SALARY_SCALES, getMonthlySalary } from '../data/rates'
+import { HOSPITALS } from '../data/constants'
 
 // Disposable / throwaway email domains to block
 const BLOCKED_DOMAINS = [
@@ -36,20 +37,6 @@ function PasswordRule({ met, label }) {
     </div>
   )
 }
-
-const HOSPITALS = [
-  'Kingston Public Hospital (KPH)',
-  'University Hospital of the West Indies (UHWI)',
-  'Cornwall Regional Hospital',
-  'Spanish Town Hospital',
-  'Mandeville Regional Hospital',
-  'May Pen Hospital',
-  'St. Ann\'s Bay Regional Hospital',
-  'Port Maria Hospital',
-  'Savanna-la-Mar Hospital',
-  'Black River Hospital',
-  'Other',
-]
 
 export default function Register() {
   const { register } = useAuth()
