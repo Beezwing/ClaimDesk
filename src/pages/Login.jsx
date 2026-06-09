@@ -29,9 +29,8 @@ export default function Login() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center gap-2 text-blue-600 font-bold text-xl">
-            <BarChart2 size={24} />
-            ClaimDesk
+          <Link to="/" className="inline-block">
+            <img src="/logo.png" alt="ClaimDesk" className="h-10 w-auto mx-auto" />
           </Link>
           <p className="text-gray-500 mt-2 text-sm">Sign in to your account</p>
         </div>
