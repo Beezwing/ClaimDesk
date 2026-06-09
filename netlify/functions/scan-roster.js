@@ -82,7 +82,7 @@ exports.handler = async (event) => {
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-3-5-haiku-20241022',
+      model: 'claude-3-5-haiku-latest',
       max_tokens: 1024,
       messages: [{
         role: 'user',
@@ -120,7 +120,7 @@ Return ONLY the JSON — no explanation, no markdown fences.`,
   if (!claudeRes.ok) {
     const errText = await claudeRes.text()
     console.error('Claude API error:', claudeRes.status, errText)
-    return { statusCode: 502, headers, body: JSON.stringify({ error: 'Claude API error', detail: errText }) }
+    return { statusCode: 502, headers, body: JSON.stringify({ error: `Claude API error: ${claudeRes.status} — ${errText}` }) }
   }
 
   const claudeData = await claudeRes.json()
