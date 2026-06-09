@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { FileText, Download, BarChart2, Trash2, Save, CheckCircle } from 'lucide-react'
+import { FileText, Download, BarChart2, Trash2, Save, CheckCircle, Sparkles, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSalary } from '../context/SalaryContext'
 import DutyCalendar from '../components/DutyCalendar'
@@ -31,6 +31,16 @@ export default function Dashboard() {
 
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
+  // Subscription banner — swap SUBSCRIBE_URL once Lemon Squeezy is ready
+  const SUBSCRIBE_URL = '#'
+  const [bannerDismissed, setBannerDismissed] = useState(
+    () => sessionStorage.getItem('claimdesk_banner_dismissed') === '1'
+  )
+  function dismissBanner() {
+    sessionStorage.setItem('claimdesk_banner_dismissed', '1')
+    setBannerDismissed(true)
+  }
+
   function handleExportPDF() {
     exportSalaryPDF({ summary, profile, month, year })
   }
@@ -60,6 +70,36 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
+
+      {/* Subscription banner */}
+      {!bannerDismissed && (
+        <div className="relative flex items-center justify-between gap-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl px-4 py-3 mb-5 shadow-sm">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Sparkles size={16} className="shrink-0 opacity-90" />
+            <p className="text-sm font-medium truncate">
+              ClaimDesk Pro — unlimited history, PDF exports &amp; AI roster scan.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <a
+              href={SUBSCRIBE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-semibold bg-white text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+            >
+              Subscribe
+            </a>
+            <button
+              onClick={dismissBanner}
+              className="opacity-70 hover:opacity-100 transition-opacity p-0.5"
+              aria-label="Dismiss"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
