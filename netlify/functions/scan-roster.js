@@ -10,6 +10,20 @@ const MONTHS = [
   'July','August','September','October','November','December',
 ]
 
+// Build a calendar map for a given month/year: { "2024-06-01": "Saturday", ... }
+function buildCalendar(year, month) {
+  const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const lines = []
+  for (let d = 1; d <= daysInMonth; d++) {
+    const pad = n => String(n).padStart(2, '0')
+    const date = `${year}-${pad(month + 1)}-${pad(d)}`
+    const dayName = DAY_NAMES[new Date(year, month, d).getDay()]
+    lines.push(`${date} = ${dayName}`)
+  }
+  return lines.join('\n')
+}
+
 exports.handler = async (event) => {
   const headers = {
     'Content-Type': 'application/json',
@@ -95,36 +109,50 @@ exports.handler = async (event) => {
             type: 'text',
             text: `This is a hospital duty roster for ${MONTHS[month]} ${year}.
 
-Your task: find ALL duties assigned to "${fullName}" (last name: "${lastName}") and return them as a JSON array.
+Your task: find ALL rostered overnight duties assigned to "${fullName}" (last name: "${lastName}").
 
-Step 1 — Find the name.
-Scan the ENTIRE image carefully — every row, every column, every cell. Look for "${lastName}" or "${fullName}" in any format (e.g. ALL CAPS, with initials, abbreviated). If the name does NOT appear anywhere at all, return exactly:
-{"notFound": true}
+── WHAT IS A ROSTERED DUTY ──
+A rostered duty is an overnight on-call shift from 4PM to 8AM (16 hours).
+The duty is identified by the DATE IT STARTS (the evening date, not the morning).
+For example: a duty starting Saturday 4PM and ending Sunday 8AM → date is the Saturday, typeId = "saturday".
 
-Step 2 — Extract ALL duties.
-Hospital rosters vary in format. The person's name may appear as a ROW heading (duties are columns/dates in that row) OR as a COLUMN entry (duties are marked in their row for each date). Look for BOTH patterns.
+── CALENDAR FOR ${MONTHS[month]} ${year} ──
+Use this exact calendar to determine the day of week for every date:
+${buildCalendar(year, month)}
 
-A "duty" is any cell where this person is assigned — this includes:
-- Overnight on-call (4PM–8AM) — marked as OC, On-call, overnight, or their name in a date cell
-- Ward rounds / ward sessions (4-hour blocks)
-- Casualty sessions (4-hour blocks)
-- Any other shift assignment
+── HOW TO READ THE ROSTER ──
+Rosters vary in layout. The person's name may appear as:
+- A ROW label (their duties are marked across columns for each date)
+- A COLUMN entry (their name appears in a date's cell)
+Look carefully at both patterns across the ENTIRE image.
 
-For EVERY duty found, determine the date and classify the typeId:
+── STEP 1: FIND THE NAME ──
+Scan every row and column for "${lastName}" or "${fullName}" in any format (ALL CAPS, initials, abbreviated).
+If the name does NOT appear anywhere, return exactly: {"notFound": true}
 
-typeId rules (use the day of week for that date in ${MONTHS[month]} ${year}):
-- Monday–Friday overnight = "weekday"
-- Saturday overnight = "saturday"
-- Sunday or Public Holiday overnight = "holiday"
-- Ward round weekday = "ward_weekday", Saturday = "ward_saturday", Sunday/Holiday = "ward_holiday"
-- Casualty weekday = "casualty_weekday", Saturday = "casualty_saturday", Sunday/Holiday = "casualty_holiday"
+── STEP 2: EXTRACT ALL DUTIES ──
+For each date where this person is rostered for an overnight duty, determine the typeId using the calendar above:
 
-Return a JSON array of ALL duties found:
-[{"date":"${year}-${m}-03","typeId":"weekday"},{"date":"${year}-${m}-07","typeId":"saturday"},...]
+- Duty starts Monday–Friday → "weekday"
+- Duty starts Saturday → "saturday"  (this is "Day Off 1" rate)
+- Duty starts Sunday or Public Holiday → "holiday"  (this is "Day Off 2" rate)
 
-IMPORTANT: Be thorough. Do not stop after finding a few — scan the ENTIRE roster for every occurrence of this person's name. A busy doctor may have 15–25 duties in a month.
+Ward round sessions (4-hour blocks):
+- Weekday ward round → "ward_weekday"
+- Saturday ward round → "ward_saturday"
+- Sunday/Holiday ward round → "ward_holiday"
 
-Return ONLY the JSON array (or {"notFound":true}) — no explanation, no markdown.`,
+Casualty sessions (4-hour blocks):
+- Weekday casualty → "casualty_weekday"
+- Saturday casualty → "casualty_saturday"
+- Sunday/Holiday casualty → "casualty_holiday"
+
+── OUTPUT ──
+Return a JSON array of every duty found:
+[{"date":"${year}-${m}-03","typeId":"weekday"},{"date":"${year}-${m}-08","typeId":"saturday"},...]
+
+IMPORTANT: Scan the ENTIRE roster — do not stop early. A doctor may have 15–25 duties in a month.
+Return ONLY the JSON array (or {"notFound":true}) — no explanation, no markdown fences.`,
           },
         ],
       }],
