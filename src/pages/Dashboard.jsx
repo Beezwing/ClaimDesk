@@ -32,7 +32,7 @@ export default function Dashboard() {
 
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
-  const SUBSCRIBE_URL = 'https://tuninlifestyle.gumroad.com/l/uhjlp'
+  const SUBSCRIBE_URL = 'https://claimdesk.gumroad.com/l/uhjlp'
   const [bannerDismissed, setBannerDismissed] = useState(
     () => sessionStorage.getItem('claimdesk_banner_dismissed') === '1'
   )
