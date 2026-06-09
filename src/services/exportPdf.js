@@ -90,7 +90,7 @@ export function exportSalaryPDF({ summary, profile, month, year }) {
   const pageH = doc.internal.pageSize.getHeight()
   doc.setFontSize(7)
   doc.setTextColor(150, 150, 150)
-  doc.text('ClaimDesk · claimdesk.netlify.app · This document is generated for claim purposes only.', pageW / 2, pageH - 8, { align: 'center' })
+  doc.text('ClaimDesk · claimdeskja.app · This document is generated for claim purposes only.', pageW / 2, pageH - 8, { align: 'center' })
 
   doc.save(`ClaimDesk_${profile?.name?.replace(/\s+/g, '_') || 'Salary'}_${MONTHS[month]}_${year}.pdf`)
 }

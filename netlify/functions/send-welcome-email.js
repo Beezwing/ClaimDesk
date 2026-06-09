@@ -122,7 +122,7 @@ exports.handler = async (event) => {
               <table cellpadding="0" cellspacing="0">
                 <tr>
                   <td style="background:#2563eb;border-radius:10px;">
-                    <a href="https://claimdesk.netlify.app/dashboard"
+                    <a href="https://claimdeskja.app/dashboard"
                        style="display:inline-block;padding:13px 28px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;">
                       Go to my dashboard →
                     </a>
