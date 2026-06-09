@@ -95,22 +95,36 @@ exports.handler = async (event) => {
             type: 'text',
             text: `This is a hospital duty roster for ${MONTHS[month]} ${year}.
 
-I need you to find all rostered duties (4PM-8AM overnight shifts) for the person named "${fullName}" (last name: "${lastName}").
+Your task: find ALL duties assigned to "${fullName}" (last name: "${lastName}") and return them as a JSON array.
 
-First, scan every row and column for "${lastName}" or "${fullName}". If the name does NOT appear anywhere, return exactly:
+Step 1 — Find the name.
+Scan the ENTIRE image carefully — every row, every column, every cell. Look for "${lastName}" or "${fullName}" in any format (e.g. ALL CAPS, with initials, abbreviated). If the name does NOT appear anywhere at all, return exactly:
 {"notFound": true}
 
-If the name IS found, extract every date they appear in the overnight duty column and return a JSON array:
-[{"date":"${year}-${m}-03","typeId":"weekday"},...]
+Step 2 — Extract ALL duties.
+Hospital rosters vary in format. The person's name may appear as a ROW heading (duties are columns/dates in that row) OR as a COLUMN entry (duties are marked in their row for each date). Look for BOTH patterns.
 
-Rules for typeId:
+A "duty" is any cell where this person is assigned — this includes:
+- Overnight on-call (4PM–8AM) — marked as OC, On-call, overnight, or their name in a date cell
+- Ward rounds / ward sessions (4-hour blocks)
+- Casualty sessions (4-hour blocks)
+- Any other shift assignment
+
+For EVERY duty found, determine the date and classify the typeId:
+
+typeId rules (use the day of week for that date in ${MONTHS[month]} ${year}):
 - Monday–Friday overnight = "weekday"
 - Saturday overnight = "saturday"
 - Sunday or Public Holiday overnight = "holiday"
-- Ward round session (4 hr) weekday = "ward_weekday", Saturday = "ward_saturday", Sunday/Holiday = "ward_holiday"
-- Casualty session (4 hr) weekday = "casualty_weekday", Saturday = "casualty_saturday", Sunday/Holiday = "casualty_holiday"
+- Ward round weekday = "ward_weekday", Saturday = "ward_saturday", Sunday/Holiday = "ward_holiday"
+- Casualty weekday = "casualty_weekday", Saturday = "casualty_saturday", Sunday/Holiday = "casualty_holiday"
 
-Return ONLY the JSON — no explanation, no markdown fences.`,
+Return a JSON array of ALL duties found:
+[{"date":"${year}-${m}-03","typeId":"weekday"},{"date":"${year}-${m}-07","typeId":"saturday"},...]
+
+IMPORTANT: Be thorough. Do not stop after finding a few — scan the ENTIRE roster for every occurrence of this person's name. A busy doctor may have 15–25 duties in a month.
+
+Return ONLY the JSON array (or {"notFound":true}) — no explanation, no markdown.`,
           },
         ],
       }],

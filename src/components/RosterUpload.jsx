@@ -12,7 +12,7 @@ async function compressImage(file) {
     const url = URL.createObjectURL(file)
     img.onload = () => {
       URL.revokeObjectURL(url)
-      const MAX = 1500
+      const MAX = 2400
       let { width: w, height: h } = img
       if (w > MAX || h > MAX) {
         if (w > h) { h = Math.round(h * MAX / w); w = MAX }
@@ -28,7 +28,7 @@ async function compressImage(file) {
         reader.onload = () => resolve({ base64: reader.result.split(',')[1], mediaType: 'image/jpeg' })
         reader.onerror = reject
         reader.readAsDataURL(blob)
-      }, 'image/jpeg', 0.82)
+      }, 'image/jpeg', 0.92)
     }
     img.onerror = reject
     img.src = url
