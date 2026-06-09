@@ -1,8 +1,41 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { BarChart2 } from 'lucide-react'
+import { BarChart2, CheckCircle, XCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { GRADES, SALARY_SCALES, getMonthlySalary } from '../data/rates'
+
+// Disposable / throwaway email domains to block
+const BLOCKED_DOMAINS = [
+  'mailinator.com','guerrillamail.com','tempmail.com','throwam.com','yopmail.com',
+  'sharklasers.com','guerrillamailblock.com','grr.la','guerrillamail.info',
+  'spam4.me','trashmail.com','trashmail.me','dispostable.com','maildrop.cc',
+  'mailnull.com','spamgourmet.com','10minutemail.com','10minutemail.net',
+  'fakeinbox.com','tempinbox.com','discard.email','mailnesia.com',
+  'spamhereplease.com','spamhereplease.net','getairmail.com','filzmail.com',
+]
+
+function isDisposableEmail(email) {
+  const domain = email.split('@')[1]?.toLowerCase()
+  return domain ? BLOCKED_DOMAINS.includes(domain) : false
+}
+
+function validatePassword(pw) {
+  return {
+    length:  pw.length >= 8,
+    upper:   /[A-Z]/.test(pw),
+    lower:   /[a-z]/.test(pw),
+    numSym:  /[0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/.test(pw),
+  }
+}
+
+function PasswordRule({ met, label }) {
+  return (
+    <div className={`flex items-center gap-1.5 text-xs ${met ? 'text-green-600' : 'text-gray-400'}`}>
+      {met ? <CheckCircle size={12} /> : <XCircle size={12} />}
+      {label}
+    </div>
+  )
+}
 
 const HOSPITALS = [
   'Kingston Public Hospital (KPH)',
@@ -24,6 +57,7 @@ export default function Register() {
   const [step, setStep] = useState(1)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showRules, setShowRules] = useState(false)
 
   const [form, setForm] = useState({
     name: '',
@@ -38,20 +72,37 @@ export default function Register() {
     crossCoverage: false,
   })
 
+  const pwRules = useMemo(() => validatePassword(form.password), [form.password])
+  const pwValid = Object.values(pwRules).every(Boolean)
+
   function update(field, value) {
     setForm(prev => ({ ...prev, [field]: value }))
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (step === 1) { setStep(2); return }
+    if (step === 1) {
+      // Validate before moving to step 2
+      if (isDisposableEmail(form.email)) {
+        setError('Please use a real email address — disposable emails are not allowed.')
+        return
+      }
+      if (!pwValid) {
+        setError('Please make sure your password meets all the requirements below.')
+        setShowRules(true)
+        return
+      }
+      setError('')
+      setStep(2)
+      return
+    }
 
     setLoading(true)
     setError('')
     try {
       const autoSalary = form.gradeId ? getMonthlySalary(form.gradeId, form.scaleYear, parseInt(form.salaryStep)) : 0
       const effectiveBaseSalary = form.salaryMode === 'scale' ? autoSalary : (parseFloat(form.baseSalary) || 0)
-      await register(form.email, form.password, {
+      const firebaseUser = await register(form.email, form.password, {
         name: form.name,
         hospital: form.hospital,
         gradeId: form.gradeId,
@@ -60,6 +111,19 @@ export default function Register() {
         baseSalary: effectiveBaseSalary,
         crossCoverage: form.crossCoverage,
       })
+
+      // Send welcome email (best-effort — don't block navigation)
+      try {
+        const idToken = await firebaseUser.getIdToken()
+        fetch('/.netlify/functions/send-welcome-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+          body: JSON.stringify({ name: form.name, email: form.email }),
+        })
+      } catch (emailErr) {
+        console.warn('Welcome email failed (non-critical):', emailErr)
+      }
+
       navigate('/dashboard')
     } catch (err) {
       setError(err.message)
@@ -128,12 +192,22 @@ export default function Register() {
                   <input
                     type="password"
                     required
-                    minLength={6}
                     value={form.password}
-                    onChange={e => update('password', e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Minimum 6 characters"
+                    onChange={e => { update('password', e.target.value); setShowRules(true) }}
+                    onFocus={() => setShowRules(true)}
+                    className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      form.password && !pwValid ? 'border-red-300' : form.password && pwValid ? 'border-green-400' : 'border-gray-300'
+                    }`}
+                    placeholder="Min. 8 characters"
                   />
+                  {showRules && (
+                    <div className="mt-2 grid grid-cols-2 gap-1 p-2 bg-gray-50 rounded-lg">
+                      <PasswordRule met={pwRules.length} label="8+ characters" />
+                      <PasswordRule met={pwRules.upper}  label="Capital letter" />
+                      <PasswordRule met={pwRules.lower}  label="Lowercase letter" />
+                      <PasswordRule met={pwRules.numSym} label="Number or symbol" />
+                    </div>
+                  )}
                 </div>
               </>
             )}
