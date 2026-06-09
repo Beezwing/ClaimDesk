@@ -239,7 +239,7 @@ export default function Register() {
                     <optgroup label="Doctors (JMDA rates)">
                       {doctorGrades.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
                     </optgroup>
-                    <optgroup label="Nurses (rates pending — placeholder)">
+                    <optgroup label="Registered Nurses (HPC/RN)">
                       {nurseGrades.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
                     </optgroup>
                   </select>

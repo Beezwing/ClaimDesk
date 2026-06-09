@@ -7,11 +7,15 @@ export const GRADES = [
   { id: 'sho',   label: 'Senior House Officer (SHO)', category: 'doctor', crossCoverageEligible: true },
   { id: 'int1',  label: 'Intern I',        category: 'doctor', crossCoverageEligible: false },
   { id: 'locum', label: 'Locum Intern',    category: 'doctor', crossCoverageEligible: false },
-  // Nurses — rates TBD, placeholder
-  { id: 'rn3',   label: 'Registered Nurse Grade 3', category: 'nurse', crossCoverageEligible: false },
-  { id: 'rn2',   label: 'Registered Nurse Grade 2', category: 'nurse', crossCoverageEligible: false },
-  { id: 'rn1',   label: 'Registered Nurse Grade 1', category: 'nurse', crossCoverageEligible: false },
-  { id: 'en',    label: 'Enrolled Nurse',   category: 'nurse', crossCoverageEligible: false },
+  // Registered Nurses — HPC/RN salary scales (MOF 26.5.23)
+  { id: 'rn8', label: 'HPC/RN 8', category: 'nurse', crossCoverageEligible: false },
+  { id: 'rn7', label: 'HPC/RN 7', category: 'nurse', crossCoverageEligible: false },
+  { id: 'rn6', label: 'HPC/RN 6', category: 'nurse', crossCoverageEligible: false },
+  { id: 'rn5', label: 'HPC/RN 5', category: 'nurse', crossCoverageEligible: false },
+  { id: 'rn4', label: 'HPC/RN 4', category: 'nurse', crossCoverageEligible: false },
+  { id: 'rn3', label: 'HPC/RN 3', category: 'nurse', crossCoverageEligible: false },
+  { id: 'rn2', label: 'HPC/RN 2', category: 'nurse', crossCoverageEligible: false },
+  { id: 'rn1', label: 'HPC/RN 1', category: 'nurse', crossCoverageEligible: false },
 ]
 
 // Annual basic salary scales (JMD) — JMDA 2023-2025 document
@@ -26,6 +30,15 @@ export const SALARY_SCALES = {
     sho:   [6799334],
     int1:  [6119400],
     locum: [5507460],
+    // Registered Nurses — MOF Salary Scale 26.5.23, With effect from April 1, 2024
+    rn8:   [10000000, 11886858],
+    rn7:   [ 8921315, 10604640],
+    rn6:   [ 7885142,  9372956],
+    rn5:   [ 6799334,  8082271],
+    rn4:   [ 5863044,  6969317],
+    rn3:   [ 5055684,  6009620],
+    rn2:   [ 4359501,  5182077],
+    rn1:   [ 3241533,  3853164],
   },
   // With Effect from April 1, 2023
   '2023': {
@@ -35,6 +48,15 @@ export const SALARY_SCALES = {
     sho:   [6289384],
     int1:  [5660445],
     locum: [5094401],
+    // Registered Nurses — With effect from April 1, 2023
+    rn8:   [9250000, 10995343],
+    rn7:   [8252216,  9809292],
+    rn6:   [7293757,  8669985],
+    rn5:   [6289384,  7476101],
+    rn4:   [5423316,  6446618],
+    rn3:   [4676508,  5558899],
+    rn2:   [4032538,  4793421],
+    rn1:   [2998418,  3564126],
   },
   // Existing (pre-2023) rates for reference
   'existing': {
@@ -44,6 +66,15 @@ export const SALARY_SCALES = {
     sho:   [2254291],
     int1:  [1803432],
     locum: [1767364],
+    // Registered Nurses — Previous rates
+    rn8:   [3568177, 4241442],
+    rn7:   [3061485, 3639144],
+    rn6:   [2634885, 3132050],
+    rn5:   [2254290, 2679643],
+    rn4:   [1944796, 2311731],
+    rn3:   [1689672, 2008489],
+    rn2:   [1453516, 1727774],
+    rn1:   [1146743, 1363117],
   },
 }
 
@@ -68,11 +99,18 @@ export const ROSTERED_STANDARD = {
   sho:   { weekday: 1354.74, saturday: 1761.16, holiday: 1828.90 },
   int1:  { weekday: 1083.79, saturday: 1408.93, holiday: 1463.12 },
   locum: { weekday: 1062.12, saturday: 1380.75, holiday: 1433.86 },
-  // Nurse rates TBD — placeholder same as intern
-  rn3:   { weekday: 1083.79, saturday: 1408.93, holiday: 1463.12 },
-  rn2:   { weekday: 950.00,  saturday: 1235.00, holiday: 1282.50 },
-  rn1:   { weekday: 820.00,  saturday: 1066.00, holiday: 1107.00 },
-  en:    { weekday: 700.00,  saturday: 910.00,  holiday: 945.00  },
+  // Registered Nurses — Standby/On-Call rates from MOF Salary Scale 26.5.23
+  // Annual on-call ÷ 52 weeks ÷ 16 hrs = effective hourly rate per rostered shift
+  // RN 8–6: $1,750,788 / $1,502,124 / $1,292,772 pa on-call
+  // RN 5–4: $1,106,040 / $954,252 pa | RN 3–1: $828,984 / $713,232 / $562,692 pa
+  rn8:   { weekday: 2102.87, saturday: 2733.74, holiday: 2838.34 },
+  rn7:   { weekday: 1803.99, saturday: 2345.18, holiday: 2435.65 },
+  rn6:   { weekday: 1552.85, saturday: 2018.71, holiday: 2096.51 },
+  rn5:   { weekday: 1328.17, saturday: 1726.62, holiday: 1793.27 },
+  rn4:   { weekday: 1145.74, saturday: 1489.47, holiday: 1546.64 },
+  rn3:   { weekday:  995.17, saturday: 1293.72, holiday: 1343.17 },
+  rn2:   { weekday:  856.29, saturday: 1113.18, holiday: 1155.74 },
+  rn1:   { weekday:  675.83, saturday:  878.57, holiday:  912.31 },
 }
 
 // Rostered duty hourly rates — cross coverage (two hospitals)
@@ -103,7 +141,6 @@ export const SESSION_CROSS_COVERAGE = {
 
 export function getSessionRates(gradeId) {
   if (gradeId === 'sho') return SESSION_SHO
-  // Nurses TBD — use MO1 as placeholder
   return SESSION_MO1_ABOVE
 }
 
