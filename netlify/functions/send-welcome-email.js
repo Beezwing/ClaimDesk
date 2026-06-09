@@ -156,7 +156,7 @@ exports.handler = async (event) => {
       Authorization: `Bearer ${RESEND_API_KEY}`,
     },
     body: JSON.stringify({
-      from: 'ClaimDesk <onboarding@resend.dev>',
+      from: 'ClaimDesk <noreply@claimdeskja.app>',
       to: [email],
       subject: `Welcome to ClaimDesk, ${firstName}!`,
       html,
