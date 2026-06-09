@@ -83,7 +83,7 @@ export default function Dashboard() {
               <p className="text-sm font-medium truncate">
                 ClaimDesk Pro — PDF exports &amp; AI roster scan.
               </p>
-              <p className="text-xs opacity-75 truncate">Use your ClaimDesk email when subscribing to upgrade instantly.</p>
+              <p className="text-xs opacity-75 truncate">Use <strong>{user?.email}</strong> when subscribing to upgrade instantly.</p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -191,7 +191,7 @@ export default function Dashboard() {
               <Lock size={32} className="mx-auto mb-4 text-gray-300" />
               <h3 className="font-semibold text-gray-800 mb-2">Pro Feature</h3>
               <p className="text-sm text-gray-500 mb-1">AI roster scan is available on ClaimDesk Pro.</p>
-              <p className="text-xs text-gray-400 mb-5">Use your ClaimDesk email when subscribing to upgrade instantly.</p>
+              <p className="text-xs text-gray-400 mb-5">Use <strong>{user?.email}</strong> when subscribing to upgrade instantly.</p>
               <a href={SUBSCRIBE_URL} target="_blank" rel="noopener noreferrer"
                 className="inline-block bg-blue-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-blue-700 transition-colors">
                 Upgrade to Pro — $4.99/month
