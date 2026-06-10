@@ -13,7 +13,7 @@ export default function Navbar() {
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 h-64 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between">
         <Link to="/">
           <img src="/logo.png" alt="ClaimDesk" className="h-60 w-auto" />
         </Link>
