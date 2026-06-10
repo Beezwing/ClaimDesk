@@ -30,7 +30,7 @@ export default function Login() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-block">
-            <img src="/logo.png" alt="ClaimDesk" className="h-24 w-auto mx-auto" />
+            <img src="/logo.png" alt="ClaimDesk" className="h-72 w-auto mx-auto" />
           </Link>
           <p className="text-gray-500 mt-2 text-sm">Sign in to your account</p>
         </div>
