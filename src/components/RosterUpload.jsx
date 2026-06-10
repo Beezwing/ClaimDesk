@@ -1,11 +1,23 @@
 import { useState, useRef } from 'react'
-import { Upload, CheckCircle, AlertCircle, Loader, UserX } from 'lucide-react'
+import { Upload, CheckCircle, AlertCircle, Loader, UserX, Trash2, Plus, PenLine } from 'lucide-react'
 import { useSalary } from '../context/SalaryContext'
 import { useAuth } from '../context/AuthContext'
+import { DUTY_TYPES, getDutyType } from '../data/dutyTypes'
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
 
-// Compress image to JPEG and cap longest side at 1500px to stay well under Netlify's 6MB function limit
+function getDayName(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00')
+  return DAY_NAMES[d.getDay()]
+}
+
+function formatDate(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00')
+  return d.toLocaleDateString('en-JM', { month: 'short', day: 'numeric' })
+}
+
+// Compress image to JPEG — cap longest side at 2400px
 async function compressImage(file) {
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -19,8 +31,7 @@ async function compressImage(file) {
         else        { w = Math.round(w * MAX / h); h = MAX }
       }
       const canvas = document.createElement('canvas')
-      canvas.width = w
-      canvas.height = h
+      canvas.width = w; canvas.height = h
       canvas.getContext('2d').drawImage(img, 0, 0, w, h)
       canvas.toBlob(blob => {
         if (!blob) { reject(new Error('Compression failed')); return }
@@ -35,7 +46,6 @@ async function compressImage(file) {
   })
 }
 
-// PDFs are sent as-is (can't canvas-compress them)
 async function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -45,11 +55,148 @@ async function fileToBase64(file) {
   })
 }
 
+// ── Review screen ─────────────────────────────────────────────────────────────
+function ReviewScreen({ scanned, month, year, fullName, onConfirm, onCancel }) {
+  const [duties, setDuties] = useState(
+    scanned.map((d, i) => ({ ...d, _key: `r-${i}` }))
+  )
+  const [addDate, setAddDate] = useState('')
+  const [addType, setAddType] = useState('weekday')
+
+  // Sorted by date for display
+  const sorted = [...duties].sort((a, b) => a.date.localeCompare(b.date))
+
+  function remove(key) {
+    setDuties(prev => prev.filter(d => d._key !== key))
+  }
+
+  function changeType(key, typeId) {
+    setDuties(prev => prev.map(d => d._key === key ? { ...d, typeId } : d))
+  }
+
+  function addDuty() {
+    if (!addDate) return
+    const key = `r-add-${Date.now()}`
+    setDuties(prev => [...prev, { date: addDate, typeId: addType, _key: key }])
+    setAddDate('')
+  }
+
+  const pad = n => String(n).padStart(2, '0')
+  const minDate = `${year}-${pad(month + 1)}-01`
+  const maxDate = `${year}-${pad(month + 1)}-${new Date(year, month + 1, 0).getDate()}`
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-2">
+        <PenLine size={18} className="text-blue-600 mt-0.5 shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-gray-800">Review scan results</p>
+          <p className="text-xs text-gray-500">
+            Found <strong>{duties.length} duties</strong> for <strong>{fullName}</strong> in {MONTHS[month]} {year}.
+            Remove any mistakes, correct duty types, or add missing duties — then confirm.
+          </p>
+        </div>
+      </div>
+
+      {/* Duty list */}
+      <div className="border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100 max-h-72 overflow-y-auto">
+        {sorted.length === 0 && (
+          <p className="text-sm text-gray-400 text-center py-6">No duties yet — add them below.</p>
+        )}
+        {sorted.map(d => {
+          const dt = getDutyType(d.typeId)
+          return (
+            <div key={d._key} className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-gray-50">
+              {/* Date + day */}
+              <div className="w-24 shrink-0">
+                <p className="text-sm font-medium text-gray-800">{formatDate(d.date)}</p>
+                <p className="text-xs text-gray-400">{getDayName(d.date)}</p>
+              </div>
+
+              {/* Type selector */}
+              <select
+                value={d.typeId}
+                onChange={e => changeType(d._key, e.target.value)}
+                className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                style={{ borderLeftColor: dt?.color, borderLeftWidth: 3 }}
+              >
+                {DUTY_TYPES.map(t => (
+                  <option key={t.id} value={t.id}>{t.label}</option>
+                ))}
+              </select>
+
+              {/* Remove */}
+              <button
+                onClick={() => remove(d._key)}
+                className="p-1.5 text-gray-300 hover:text-red-500 transition-colors shrink-0"
+                title="Remove this duty"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Add a duty manually */}
+      <div className="border border-dashed border-gray-300 rounded-xl p-3">
+        <p className="text-xs font-medium text-gray-600 mb-2 flex items-center gap-1">
+          <Plus size={12} /> Add a missing duty
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="date"
+            value={addDate}
+            min={minDate}
+            max={maxDate}
+            onChange={e => setAddDate(e.target.value)}
+            className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <select
+            value={addType}
+            onChange={e => setAddType(e.target.value)}
+            className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            {DUTY_TYPES.map(t => (
+              <option key={t.id} value={t.id}>{t.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={addDuty}
+            disabled={!addDate}
+            className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors shrink-0"
+          >
+            Add
+          </button>
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex gap-2">
+        <button
+          onClick={onCancel}
+          className="flex-1 py-2.5 text-sm border border-gray-300 rounded-xl text-gray-600 hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => onConfirm(duties)}
+          className="flex-1 py-2.5 text-sm bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors"
+        >
+          Load {duties.length} {duties.length === 1 ? 'duty' : 'duties'} to calendar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 export default function RosterUpload({ gradeId }) {
   const { month, year, loadDuties, duties } = useSalary()
   const { profile, user } = useAuth()
-  const [state, setState] = useState('idle') // idle | loading | done | error | notfound
+  const [state, setState] = useState('idle') // idle | loading | review | done | error | notfound
   const [message, setMessage] = useState('')
+  const [scannedDuties, setScannedDuties] = useState([])
   const fileRef = useRef()
 
   const fullName = profile?.name || ''
@@ -68,18 +215,12 @@ export default function RosterUpload({ gradeId }) {
         return
       }
 
-      // ── Compress / encode image ──────────────────────────────────────────
-      let encoded
-      if (file.type === 'application/pdf') {
-        encoded = await fileToBase64(file)
-      } else {
-        encoded = await compressImage(file)
-      }
+      const encoded = file.type === 'application/pdf'
+        ? await fileToBase64(file)
+        : await compressImage(file)
 
-      // ── Get Firebase ID token ────────────────────────────────────────────
       const idToken = await user.getIdToken()
 
-      // ── Call secure Netlify Function ─────────────────────────────────────
       const res = await fetch('/.netlify/functions/scan-roster', {
         method: 'POST',
         headers: {
@@ -104,7 +245,6 @@ export default function RosterUpload({ gradeId }) {
       const claudeData = await res.json()
       const text = claudeData.content?.[0]?.text?.trim() || '{}'
 
-      // ── Parse Claude response ─────────────────────────────────────────────
       if (text.includes('"notFound"')) {
         setState('notfound')
         setMessage(`"${lastName}" was not found on this roster. Check that your registered name matches how it appears on your department's roster.`)
@@ -119,16 +259,8 @@ export default function RosterUpload({ gradeId }) {
         return
       }
 
-      const newDuties = extracted.map((d, i) => ({
-        id: `scan-${d.date}-${d.typeId}-${i}`,
-        date: d.date,
-        typeId: d.typeId,
-        taxi: false,
-      }))
-
-      loadDuties([...duties.filter(d => !d.id.startsWith('scan-')), ...newDuties])
-      setState('done')
-      setMessage(`Found ${newDuties.length} duties for ${fullName} in ${MONTHS[month]} ${year}.`)
+      setScannedDuties(extracted)
+      setState('review')
 
     } catch (err) {
       console.error('Roster scan error:', err)
@@ -137,9 +269,21 @@ export default function RosterUpload({ gradeId }) {
     }
   }
 
-  // ── Demo simulation (demo user only) ──────────────────────────────────────
+  function handleConfirm(reviewedDuties) {
+    const newDuties = reviewedDuties.map((d, i) => ({
+      id: `scan-${d.date}-${d.typeId}-${i}`,
+      date: d.date,
+      typeId: d.typeId,
+      taxi: false,
+    }))
+    loadDuties([...duties.filter(d => !d.id?.startsWith('scan-')), ...newDuties])
+    setState('done')
+    setMessage(`Loaded ${newDuties.length} ${newDuties.length === 1 ? 'duty' : 'duties'} for ${fullName} — ${MONTHS[month]} ${year}.`)
+  }
+
+  // Demo simulation
   async function simulateScan() {
-    await new Promise(r => setTimeout(r, 1500))
+    await new Promise(r => setTimeout(r, 2000))
     if (!lastName.includes('MUIRHEAD') && !fullName.toUpperCase().includes('MUIRHEAD')) {
       setState('notfound')
       setMessage(`"${lastName}" was not found on the demo roster. (Demo mode uses the Muirhead October 2024 roster.)`)
@@ -147,20 +291,20 @@ export default function RosterUpload({ gradeId }) {
     }
     const pad = n => String(n).padStart(2, '0')
     const y = year, m = pad(month + 1)
-    const mockDuties = [
+    const mock = [
       { date: `${y}-${m}-03`, typeId: 'weekday' },
       { date: `${y}-${m}-08`, typeId: 'weekday' },
       { date: `${y}-${m}-09`, typeId: 'weekday' },
       { date: `${y}-${m}-18`, typeId: 'weekday' },
       { date: `${y}-${m}-19`, typeId: 'saturday' },
       { date: `${y}-${m}-21`, typeId: 'holiday' },
+      { date: `${y}-${m}-23`, typeId: 'weekday' },
       { date: `${y}-${m}-24`, typeId: 'weekday' },
       { date: `${y}-${m}-28`, typeId: 'weekday' },
       { date: `${y}-${m}-29`, typeId: 'weekday' },
-    ].map((d, i) => ({ ...d, id: `demo-${d.date}-${d.typeId}-${i}`, taxi: false }))
-    loadDuties(mockDuties)
-    setState('done')
-    setMessage(`Loaded 9 duties for Dr. Muirhead — ${MONTHS[month]} ${year}.`)
+    ]
+    setScannedDuties(mock)
+    setState('review')
   }
 
   function onDrop(e) {
@@ -172,18 +316,36 @@ export default function RosterUpload({ gradeId }) {
   function reset() {
     setState('idle')
     setMessage('')
+    setScannedDuties([])
     if (fileRef.current) fileRef.current.value = ''
+  }
+
+  // ── Review state — show the ReviewScreen outside the dashed box ───────────
+  if (state === 'review') {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-200 p-5">
+        <h3 className="font-semibold text-gray-900 mb-3">Upload Roster</h3>
+        <ReviewScreen
+          scanned={scannedDuties}
+          month={month}
+          year={year}
+          fullName={fullName}
+          onConfirm={handleConfirm}
+          onCancel={reset}
+        />
+      </div>
+    )
   }
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 p-5">
       <h3 className="font-semibold text-gray-900 mb-1">Upload Roster</h3>
       <p className="text-sm text-gray-500 mb-1">
-        Upload a photo or PDF of your monthly roster. We'll find <strong>{fullName || 'your name'}</strong> and extract your duties automatically.
+        Upload a photo or PDF of your monthly roster. We'll find <strong>{fullName || 'your name'}</strong> and extract your overnight rostered duties.
       </p>
       {fullName && (
         <p className="text-xs text-blue-600 mb-4">
-          Searching for: <strong>{lastName}</strong> on the roster
+          Searching for: <strong>{lastName}</strong> in the overnight section
         </p>
       )}
 
@@ -198,8 +360,9 @@ export default function RosterUpload({ gradeId }) {
         {state === 'loading' && (
           <div className="flex flex-col items-center gap-2 text-gray-500">
             <Loader size={28} className="animate-spin text-blue-500" />
-            <p className="text-sm">Scanning roster for <strong>{lastName}</strong>…</p>
-            <p className="text-xs text-gray-400">This usually takes 5–10 seconds</p>
+            <p className="text-sm font-medium">Analysing roster…</p>
+            <p className="text-xs text-gray-400">Pass 1: understanding layout · Pass 2: extracting duties</p>
+            <p className="text-xs text-gray-400">This takes 10–20 seconds</p>
           </div>
         )}
 
