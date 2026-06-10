@@ -86,6 +86,27 @@ export const DUTY_TYPES = [
     dayType: 'holiday',
     taxiEligible: true,
   },
+  // Day Off composite duties
+  // Day Off 1 (Saturday): 8hrs casualty session rate + 16hrs Saturday rostered rate
+  {
+    id: 'dayoff1',
+    label: 'Day Off 1 — Saturday (8hr Casualty + 16hr Saturday)',
+    color: '#7c3aed',
+    bg: '#ede9fe',
+    type: 'dayoff',
+    dayType: 'saturday',
+    taxiEligible: true,
+  },
+  // Day Off 2 (Sunday/Holiday): 8hrs casualty session rate + 16hrs Sunday rostered rate
+  {
+    id: 'dayoff2',
+    label: 'Day Off 2 — Sunday/Holiday (8hr Casualty + 16hr Sunday)',
+    color: '#dc2626',
+    bg: '#fee2e2',
+    type: 'dayoff',
+    dayType: 'holiday',
+    taxiEligible: true,
+  },
 ]
 
 export function getDutyType(id) {

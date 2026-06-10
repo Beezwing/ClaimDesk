@@ -107,51 +107,43 @@ exports.handler = async (event) => {
           },
           {
             type: 'text',
-            text: `This is a hospital duty roster for ${MONTHS[month]} ${year}.
+            text: `This is a hospital department duty roster for ${MONTHS[month]} ${year}.
 
-Your task: find ALL rostered overnight duties assigned to "${fullName}" (last name: "${lastName}").
+── ROSTER LAYOUT ──
+This roster has TWO sections side by side:
+1. LEFT section "8am - 4pm": Lists all doctors on daytime duty. IGNORE THIS SECTION COMPLETELY.
+2. RIGHT section "4pm - 8am ROSTERED DUTY": Has sub-columns (SHO / MOs/Residents / SR/Consultant). THIS IS THE ONLY SECTION THAT MATTERS.
 
-── WHAT IS A ROSTERED DUTY ──
-A rostered duty is an overnight on-call shift from 4PM to 8AM (16 hours).
-The duty is identified by the DATE IT STARTS (the evening date, not the morning).
-For example: a duty starting Saturday 4PM and ending Sunday 8AM → date is the Saturday, typeId = "saturday".
-
-── CALENDAR FOR ${MONTHS[month]} ${year} ──
-Use this exact calendar to determine the day of week for every date:
-${buildCalendar(year, month)}
-
-── HOW TO READ THE ROSTER ──
-Rosters vary in layout. The person's name may appear as:
-- A ROW label (their duties are marked across columns for each date)
-- A COLUMN entry (their name appears in a date's cell)
-Look carefully at both patterns across the ENTIRE image.
+Your task: Find every row where "${lastName}" or "${fullName}" appears in the RIGHT "4pm - 8am ROSTERED DUTY" columns ONLY.
+Each cell in the right section may contain multiple names separated by "/" (e.g. "Muirhead/Prendergast") — if "${lastName}" appears anywhere in the cell, that is a rostered duty for this person.
 
 ── STEP 1: FIND THE NAME ──
-Scan every row and column for "${lastName}" or "${fullName}" in any format (ALL CAPS, initials, abbreviated).
-If the name does NOT appear anywhere, return exactly: {"notFound": true}
+Scan ONLY the right-side "4pm - 8am" columns for "${lastName}".
+IGNORE any appearance of the name in the left "8am - 4pm" daytime column.
+If "${lastName}" does not appear in the right section at all, return exactly: {"notFound": true}
 
 ── STEP 2: EXTRACT ALL DUTIES ──
-For each date where this person is rostered for an overnight duty, determine the typeId using the calendar above:
+For each row where "${lastName}" appears in the right section, record the date from that row.
+Use this exact calendar to determine the day of week:
+${buildCalendar(year, month)}
 
-- Duty starts Monday–Friday → "weekday"
-- Duty starts Saturday → "saturday"  (this is "Day Off 1" rate)
-- Duty starts Sunday or Public Holiday → "holiday"  (this is "Day Off 2" rate)
-
-Ward round sessions (4-hour blocks):
-- Weekday ward round → "ward_weekday"
+Classify each duty using these typeId rules:
+- Monday–Friday overnight (4PM–8AM) → "weekday"
+- Saturday overnight → "saturday"
+- Sunday overnight → "holiday"
+- Public Holiday overnight → "holiday"
+- Weekday casualty session (4hr) → "casualty_weekday"
+- Saturday casualty session → "casualty_saturday"
+- Sunday/Holiday casualty session → "casualty_holiday"
+- Weekday ward round (4hr) → "ward_weekday"
 - Saturday ward round → "ward_saturday"
 - Sunday/Holiday ward round → "ward_holiday"
 
-Casualty sessions (4-hour blocks):
-- Weekday casualty → "casualty_weekday"
-- Saturday casualty → "casualty_saturday"
-- Sunday/Holiday casualty → "casualty_holiday"
-
 ── OUTPUT ──
-Return a JSON array of every duty found:
-[{"date":"${year}-${m}-03","typeId":"weekday"},{"date":"${year}-${m}-08","typeId":"saturday"},...]
+Return a JSON array of ALL duties found in the right section:
+[{"date":"${year}-${m}-03","typeId":"weekday"},{"date":"${year}-${m}-19","typeId":"saturday"},...]
 
-IMPORTANT: Scan the ENTIRE roster — do not stop early. A doctor may have 15–25 duties in a month.
+Be thorough — check every single row of the right section. Do NOT stop early.
 Return ONLY the JSON array (or {"notFound":true}) — no explanation, no markdown fences.`,
           },
         ],

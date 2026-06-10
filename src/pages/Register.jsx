@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { BarChart2, CheckCircle, XCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { GRADES, SALARY_SCALES, getMonthlySalary } from '../data/rates'
-import { HOSPITALS } from '../data/constants'
+import { HOSPITALS, DAYS_OF_WEEK } from '../data/constants'
 
 // Disposable / throwaway email domains to block
 const BLOCKED_DOMAINS = [
@@ -57,6 +57,7 @@ export default function Register() {
     baseSalary: '',
     salaryMode: 'scale',
     crossCoverage: false,
+    daysOff: [],
   })
 
   const pwRules = useMemo(() => validatePassword(form.password), [form.password])
@@ -97,6 +98,7 @@ export default function Register() {
         salaryStep: parseInt(form.salaryStep),
         baseSalary: effectiveBaseSalary,
         crossCoverage: form.crossCoverage,
+        daysOff: form.daysOff,
       })
 
       // Send welcome email (best-effort — don't block navigation)
@@ -296,6 +298,40 @@ export default function Register() {
                     <span className="text-sm text-gray-700">I am rostered at more than one hospital (cross-coverage rates apply)</span>
                   </label>
                 )}
+
+                {/* Days off selection */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Scheduled days off <span className="text-gray-400 font-normal">(select all that apply)</span>
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {DAYS_OF_WEEK.map(day => {
+                      const selected = form.daysOff.includes(day)
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            update('daysOff', selected
+                              ? form.daysOff.filter(d => d !== day)
+                              : [...form.daysOff, day]
+                            )
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                            selected
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'border-gray-300 text-gray-600 hover:border-blue-400'
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {form.daysOff.length > 0 && (
+                    <p className="text-xs text-blue-600 mt-1.5">Days off: {form.daysOff.join(', ')}</p>
+                  )}
+                </div>
               </>
             )}
 

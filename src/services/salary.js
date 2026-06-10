@@ -24,6 +24,17 @@ export function calcDutyPay(duty, gradeId, crossCoverage) {
     return rates[dutyType.sessionType]?.[dutyType.dayType] ?? 0
   }
 
+  if (dutyType.type === 'dayoff') {
+    // Day Off 1 (Saturday): 8hrs at casualty_saturday rate + 16hrs at saturday rostered rate
+    // Day Off 2 (Sunday):   8hrs at casualty_holiday rate  + 16hrs at holiday rostered rate
+    const sessionRates = getSessionRates(gradeId)
+    const casualtyPer4hr = sessionRates.casualty?.[dutyType.dayType] ?? 0
+    const casualtyPay = casualtyPer4hr * 2          // 8 hrs = 2 × 4-hr sessions
+    const hourlyRate = getRosteredHourlyRate(gradeId, dutyType.dayType, crossCoverage)
+    const rosteredPay = hourlyRate * ROSTERED_HOURS  // 16 hrs
+    return casualtyPay + rosteredPay
+  }
+
   return 0
 }
 

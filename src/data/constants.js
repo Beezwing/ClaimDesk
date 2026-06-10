@@ -1,3 +1,7 @@
+export const DAYS_OF_WEEK = [
+  'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
+]
+
 export const HOSPITALS = [
   'Caballero Medical Center',
   'Kingston Public Hospital (KPH)',

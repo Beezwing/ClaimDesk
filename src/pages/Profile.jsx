@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { GRADES, SALARY_SCALES, getMonthlySalary } from '../data/rates'
-import { HOSPITALS } from '../data/constants'
+import { HOSPITALS, DAYS_OF_WEEK } from '../data/constants'
 import { CheckCircle, Bell, BellOff } from 'lucide-react'
 import { enableNotifications, requestNotificationPermission } from '../services/notifications'
 
@@ -16,6 +16,7 @@ export default function Profile() {
     baseSalary: profile?.baseSalary || '',
     salaryMode: 'scale', // 'scale' = auto from grade+step, 'manual' = custom entry
     crossCoverage: profile?.crossCoverage || false,
+    daysOff: profile?.daysOff || [],
   })
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -50,6 +51,7 @@ export default function Profile() {
       salaryStep: parseInt(form.salaryStep),
       baseSalary: effectiveBaseSalary,
       crossCoverage: form.crossCoverage,
+      daysOff: form.daysOff,
     })
     setLoading(false)
     setSaved(true)
@@ -174,6 +176,38 @@ export default function Profile() {
             <span className="text-sm text-gray-700">Rostered at more than one hospital (cross-coverage rates)</span>
           </label>
         )}
+
+        {/* Days off */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Scheduled days off <span className="text-gray-400 font-normal">(select all that apply)</span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {DAYS_OF_WEEK.map(day => {
+              const selected = form.daysOff.includes(day)
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  onClick={() => update('daysOff', selected
+                    ? form.daysOff.filter(d => d !== day)
+                    : [...form.daysOff, day]
+                  )}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                    selected
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'border-gray-300 text-gray-600 hover:border-blue-400'
+                  }`}
+                >
+                  {day}
+                </button>
+              )
+            })}
+          </div>
+          {form.daysOff.length > 0 && (
+            <p className="text-xs text-blue-600 mt-1.5">Days off: {form.daysOff.join(', ')}</p>
+          )}
+        </div>
 
         {/* Notification toggle */}
         <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
