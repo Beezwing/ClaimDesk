@@ -107,6 +107,16 @@ export const DUTY_TYPES = [
     dayType: 'holiday',
     taxiEligible: true,
   },
+  // CMC flat-rate day doctor shift
+  {
+    id: 'cmc_day',
+    label: 'CMC Day Doctor ($12,000 flat)',
+    color: '#0891b2',
+    bg: '#ecfeff',
+    type: 'flat',
+    flatRate: 12000,
+    taxiEligible: false,
+  },
 ]
 
 export function getDutyType(id) {

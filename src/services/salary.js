@@ -14,6 +14,10 @@ export function calcDutyPay(duty, gradeId, crossCoverage) {
   const dutyType = getDutyType(duty.typeId)
   if (!dutyType) return 0
 
+  if (dutyType.type === 'flat') {
+    return dutyType.flatRate ?? 0
+  }
+
   if (dutyType.type === 'rostered') {
     const hourlyRate = getRosteredHourlyRate(gradeId, dutyType.dayType, crossCoverage)
     return hourlyRate * ROSTERED_HOURS
