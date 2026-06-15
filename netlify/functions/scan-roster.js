@@ -75,10 +75,12 @@ exports.handler = async (event) => {
   try { body = JSON.parse(event.body) }
   catch { return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON body' }) } }
 
-  const { imageBase64, mediaType, month, year, fullName, lastName } = body
+  const { imageBase64, mediaType, month, year, fullName, lastName, hospital } = body
   if (!imageBase64 || !mediaType || month === undefined || !year || !fullName) {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing required fields' }) }
   }
+
+  const isCMC = (hospital || '').toLowerCase().includes('caballero')
 
   const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY
   if (!CLAUDE_API_KEY) return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server misconfigured' }) }
@@ -95,16 +97,20 @@ exports.handler = async (event) => {
         imageContent,
         {
           type: 'text',
-          text: `This is a hospital duty roster for ${MONTHS[month]} ${year}.
+          text: `This is a hospital duty roster for ${MONTHS[month]} ${year}${hospital ? ` from ${hospital}` : ''}.
 
 Analyse this roster and answer ALL of the following questions clearly and concisely:
 
-1. What is the overall layout? (e.g. rows = dates/days, columns = staff names OR rows = staff names, columns = dates)
-2. Are there separate sections for DAYTIME duties and OVERNIGHT/ON-CALL duties? If yes, describe where each section is (left/right, top/bottom, column headings).
-3. What column heading or label identifies the OVERNIGHT or ON-CALL section? (e.g. "4pm-8am", "On Call", "Rostered Duty", "Night Duty")
-4. How are staff names written in this roster? (e.g. SURNAME only, First Last, paired as "Name1/Name2")
-5. Does the name "${lastName}" or "${fullName}" appear anywhere in the roster? If yes, in which section(s)?
-6. How many times does "${lastName}" appear in the overnight/on-call section specifically?
+1. What is the overall layout?
+   - Option A: CALENDAR GRID — dates are laid out in a monthly calendar (Sun–Sat columns), each cell has a date number and one or more staff names assigned to that day.
+   - Option B: DUTY TABLE — rows are dates/days, columns are duty sections (e.g. "8am-4pm" daytime AND "4pm-8am" overnight/rostered).
+   - Which is it?
+
+2. If Option B: Are there separate sections for DAYTIME and OVERNIGHT duties? Where is the overnight/on-call section (column heading)?
+
+3. How are staff names written? (e.g. SURNAME only, First Last, paired as "Name1/Name2")
+
+4. Does the name "${lastName}" appear anywhere in this roster? How many times and on which dates?
 
 Be specific and accurate. This analysis will be used to extract duties in the next step.`,
         },
@@ -116,30 +122,9 @@ Be specific and accurate. This analysis will be used to extract duties in the ne
     // ── PASS 2: Extract duties using layout knowledge ────────────────────────
     const calendar = buildCalendar(year, month)
 
-    const extractionResult = await callClaude(CLAUDE_API_KEY, [
-      {
-        role: 'user',
-        content: [
-          imageContent,
-          {
-            type: 'text',
-            text: `This is a hospital duty roster for ${MONTHS[month]} ${year}.
-
-A previous analysis of this roster found:
-${layoutAnalysis}
-
-Now extract ALL overnight/on-call rostered duties for "${fullName}" (last name: "${lastName}").
-
-RULES:
-- ONLY extract duties from the OVERNIGHT / ON-CALL section (NOT daytime duties)
-- A cell counts as a duty for "${lastName}" if their name appears anywhere in it (including paired names like "Smith/Jones")
-- Go through EVERY row in the overnight section — do not skip any
-- If "${lastName}" does not appear in the overnight section at all, return: {"notFound": true}
-
-CALENDAR (use this to determine day of week for each date):
-${calendar}
-
-CLASSIFY each duty with the correct typeId:
+    const cmcNote = isCMC
+      ? `\nIMPORTANT: This is a Caballero Medical Center (CMC) day rota. Every shift found for "${lastName}" must use typeId "cmc_day" regardless of the day of week.`
+      : `\nCLASSIFY each duty with the correct typeId:
 - Monday to Friday overnight → "weekday"
 - Saturday overnight → "saturday"
 - Sunday overnight → "holiday"
@@ -149,19 +134,44 @@ CLASSIFY each duty with the correct typeId:
 - Sunday/Holiday casualty session → "casualty_holiday"
 - Weekday ward round (4hr block) → "ward_weekday"
 - Saturday ward round → "ward_saturday"
-- Sunday/Holiday ward round → "ward_holiday"
+- Sunday/Holiday ward round → "ward_holiday"`
+
+    const extractionResult = await callClaude(CLAUDE_API_KEY, [
+      {
+        role: 'user',
+        content: [
+          imageContent,
+          {
+            type: 'text',
+            text: `This is a hospital duty roster for ${MONTHS[month]} ${year}${hospital ? ` from ${hospital}` : ''}.
+
+A previous analysis of this roster found:
+${layoutAnalysis}
+
+Now extract ALL duties assigned to "${fullName}" (last name: "${lastName}").
+
+RULES:
+- If this is a CALENDAR GRID layout: each cell with "${lastName}"'s name is one duty — extract every date where their name appears in the cell.
+- If this is a DUTY TABLE layout: only extract duties from the OVERNIGHT / ON-CALL column (ignore daytime column).
+- A cell counts as a duty if "${lastName}" appears anywhere in it (including paired names like "Smith/Jones").
+- Go through EVERY date/cell — do not skip any.
+- If "${lastName}" does not appear at all, return: {"notFound": true}
+
+CALENDAR (use this to get the exact date for each day):
+${calendar}
+${cmcNote}
 
 Return a JSON array of every duty found:
-[{"date":"${year}-${m}-03","typeId":"weekday"},{"date":"${year}-${m}-19","typeId":"saturday"},...]
+[{"date":"${year}-${m}-01","typeId":"cmc_day"},{"date":"${year}-${m}-10","typeId":"cmc_day"},...]
 
-IMPORTANT: Be exhaustive. Check every single row. Do NOT stop early.
+IMPORTANT: Be exhaustive. Check every single cell. Do NOT stop early.
 Return ONLY the JSON (no explanation, no markdown).`,
           },
         ],
       },
       {
         role: 'assistant',
-        content: 'I have carefully reviewed every row of the overnight section. Here is the complete list:',
+        content: 'I have carefully reviewed every cell in the roster. Here is the complete list:',
       },
     ], 4096)
 

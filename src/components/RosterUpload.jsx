@@ -200,6 +200,7 @@ export default function RosterUpload({ gradeId }) {
   const fileRef = useRef()
 
   const fullName = profile?.name || ''
+  const hospital = profile?.hospital || ''
   const nameParts = fullName.trim().split(/\s+/)
   const lastName = nameParts[nameParts.length - 1]?.toUpperCase() || ''
 
@@ -234,6 +235,7 @@ export default function RosterUpload({ gradeId }) {
           year,
           fullName,
           lastName,
+          hospital,
         }),
       })
 
@@ -345,7 +347,7 @@ export default function RosterUpload({ gradeId }) {
       </p>
       {fullName && (
         <p className="text-xs text-blue-600 mb-4">
-          Searching for: <strong>{lastName}</strong> in the overnight section
+          Searching for: <strong>{lastName}</strong> on this roster
         </p>
       )}
 
