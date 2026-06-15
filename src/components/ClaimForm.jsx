@@ -1,4 +1,3 @@
-import { useRef } from 'react'
 import { Printer } from 'lucide-react'
 import { useSalary } from '../context/SalaryContext'
 import { useAuth } from '../context/AuthContext'
@@ -12,7 +11,6 @@ function dateLabel(dateStr) {
   return `${DAY_NAMES[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`
 }
 
-// Map a duty typeId to the correct form columns and labels
 function dutyToRow(typeId, taxi) {
   const base = {
     normalHrs: '8AM-4PM', overallDuty: '',
@@ -22,41 +20,75 @@ function dutyToRow(typeId, taxi) {
     taxiMark: taxi ? '✓' : '', nature: '',
   }
   switch (typeId) {
-    case 'weekday':
-      return { ...base, overallDuty: '4PM-8AM', rstWday: '16', nature: 'Rostered' }
-    case 'saturday':
-      return { ...base, overallDuty: '4PM-8AM', rstSat: '16', nature: 'Rostered' }
-    case 'holiday':
-      return { ...base, overallDuty: '4PM-8AM', rstSunHol: '16', nature: 'Rostered' }
-    case 'casualty_weekday':
-      return { ...base, overallDuty: '4hr Session', casWday: '1', nature: 'Casualty' }
-    case 'casualty_saturday':
-      return { ...base, overallDuty: '4hr Session', casSat: '1', nature: 'Casualty' }
-    case 'casualty_holiday':
-      return { ...base, overallDuty: '4hr Session', casSunHol: '1', nature: 'Casualty' }
-    case 'ward_weekday':
-      return { ...base, overallDuty: '4hr Session', wrdWday: '1', nature: 'Ward Round' }
-    case 'ward_saturday':
-      return { ...base, overallDuty: '4hr Session', wrdSat: '1', nature: 'Ward Round' }
-    case 'ward_holiday':
-      return { ...base, overallDuty: '4hr Session', wrdSunHol: '1', nature: 'Ward Round' }
-    case 'dayoff1':
-      return { ...base, overallDuty: '4PM-8AM', rstSat: '16', casSat: '2', nature: 'Day Off 1' }
-    case 'dayoff2':
-      return { ...base, overallDuty: '4PM-8AM', rstSunHol: '16', casSunHol: '2', nature: 'Day Off 2' }
-    case 'cmc_day':
-      return { ...base, normalHrs: '8AM-5PM', overallDuty: '8AM-5PM', nature: 'Day Doctor' }
-    default:
-      return base
+    case 'weekday':      return { ...base, overallDuty: '4PM-8AM',    rstWday: '16', nature: 'Rostered' }
+    case 'saturday':     return { ...base, overallDuty: '4PM-8AM',    rstSat: '16',  nature: 'Rostered' }
+    case 'holiday':      return { ...base, overallDuty: '4PM-8AM',    rstSunHol: '16', nature: 'Rostered' }
+    case 'casualty_weekday': return { ...base, overallDuty: '4hr Session', casWday: '1', nature: 'Casualty' }
+    case 'casualty_saturday': return { ...base, overallDuty: '4hr Session', casSat: '1', nature: 'Casualty' }
+    case 'casualty_holiday':  return { ...base, overallDuty: '4hr Session', casSunHol: '1', nature: 'Casualty' }
+    case 'ward_weekday':  return { ...base, overallDuty: '4hr Session', wrdWday: '1', nature: 'Ward Round' }
+    case 'ward_saturday': return { ...base, overallDuty: '4hr Session', wrdSat: '1',  nature: 'Ward Round' }
+    case 'ward_holiday':  return { ...base, overallDuty: '4hr Session', wrdSunHol: '1', nature: 'Ward Round' }
+    case 'dayoff1': return { ...base, overallDuty: '4PM-8AM', rstSat: '16',    casSat: '2',    nature: 'Day Off 1' }
+    case 'dayoff2': return { ...base, overallDuty: '4PM-8AM', rstSunHol: '16', casSunHol: '2', nature: 'Day Off 2' }
+    case 'cmc_day': return { ...base, normalHrs: '8AM-5PM', overallDuty: '8AM-5PM', nature: 'Day Doctor' }
+    default: return base
   }
 }
 
-// Build the full printable HTML document
+const DUTY_GRID_HEADER = `
+  <thead>
+    <tr>
+      <th rowspan="2" style="width:52px">DATE</th>
+      <th rowspan="2" style="width:42px">NORMAL HRS OF WORK (Shift)</th>
+      <th rowspan="2" style="width:42px">OVERALL DUTY (Time)</th>
+      <th rowspan="2" style="width:22px">TAXI</th>
+      <th colspan="3">SESSIONS / ROSTERED DUTY (PER HR)</th>
+      <th colspan="3">CASUALTY SESSIONS (PER 4 HRS)</th>
+      <th colspan="3">WARD SESSIONS (PER 4 HRS)</th>
+      <th rowspan="2" style="width:50px">NATURE OF DUTY</th>
+    </tr>
+    <tr>
+      <th style="width:26px">W/DAY</th><th style="width:26px">SAT</th><th style="width:32px">SUN/HOL</th>
+      <th style="width:26px">W/DAY</th><th style="width:26px">SAT</th><th style="width:32px">SUN/HOL</th>
+      <th style="width:26px">W/DAY</th><th style="width:26px">SAT</th><th style="width:32px">SUN/HOL</th>
+    </tr>
+  </thead>`
+
+function dutyTr(r) {
+  return `<tr>
+    <td style="text-align:left;padding:1px 3px">${r.date}</td>
+    <td>${r.normalHrs}</td>
+    <td>${r.overallDuty}</td>
+    <td>${r.taxiMark}</td>
+    <td>${r.rstWday}</td><td>${r.rstSat}</td><td>${r.rstSunHol}</td>
+    <td>${r.casWday}</td><td>${r.casSat}</td><td>${r.casSunHol}</td>
+    <td>${r.wrdWday}</td><td>${r.wrdSat}</td><td>${r.wrdSunHol}</td>
+    <td style="text-align:left;padding:1px 3px">${r.nature}</td>
+  </tr>`
+}
+
+const blankTr = `<tr>${Array(14).fill('<td>&nbsp;</td>').join('')}</tr>`
+
+const CALC_CATEGORIES = [
+  { label: 'Sessions/Rostered Duty — Weekday',       key: 'rstWday' },
+  { label: 'Sessions/Rostered Duty — Saturday',      key: 'rstSat' },
+  { label: 'Sessions/Rostered Duty — Sun/Holiday',   key: 'rstSunHol' },
+  { label: 'Casualty Sessions — Weekday',            key: 'casWday' },
+  { label: 'Casualty Sessions — Saturday',           key: 'casSat' },
+  { label: 'Casualty Sessions — Sun/Holiday',        key: 'casSunHol' },
+  { label: 'Ward Sessions — Weekday',                key: 'wrdWday' },
+  { label: 'Ward Sessions — Saturday',               key: 'wrdSat' },
+  { label: 'Ward Sessions — Sun/Holiday',            key: 'wrdSunHol' },
+  { label: 'Meal / Supper',                          key: null },
+  { label: 'Taxi',                                   key: 'taxi' },
+  { label: 'Holiday',                                key: null },
+]
+
 function buildPrintHtml(profile, month, year, duties, gradeLabel) {
   const sorted = [...duties].sort((a, b) => a.date.localeCompare(b.date))
   const rows = sorted.map(d => ({ date: dateLabel(d.date), ...dutyToRow(d.typeId, d.taxi) }))
 
-  // Column totals
   const sum = (key) => rows.reduce((acc, r) => acc + (parseFloat(r[key]) || 0), 0)
   const totals = {
     rstWday: sum('rstWday'), rstSat: sum('rstSat'), rstSunHol: sum('rstSunHol'),
@@ -65,142 +97,141 @@ function buildPrintHtml(profile, month, year, duties, gradeLabel) {
     taxi: rows.filter(r => r.taxiMark).length,
   }
 
-  const blankRows = Math.max(0, 22 - rows.length)
+  // Split rows: ~14 on front, rest on back
+  const frontRows = rows.slice(0, 14)
+  const backRows  = rows.slice(14)
+  const frontBlanks = Math.max(0, 14 - frontRows.length)
+  const backBlanks  = Math.max(0, 12 - backRows.length)
 
-  const tr = (r, i) => `
-    <tr>
-      <td style="text-align:left;padding:1px 3px">${r.date}</td>
-      <td>${r.normalHrs}</td>
-      <td>${r.overallDuty}</td>
-      <td>${r.taxiMark}</td>
-      <td>${r.rstWday}</td><td>${r.rstSat}</td><td>${r.rstSunHol}</td>
-      <td>${r.casWday}</td><td>${r.casSat}</td><td>${r.casSunHol}</td>
-      <td>${r.wrdWday}</td><td>${r.wrdSat}</td><td>${r.wrdSunHol}</td>
-      <td style="text-align:left;padding:1px 3px">${r.nature}</td>
-    </tr>`
-
-  const blankTr = `<tr>${Array(14).fill('<td>&nbsp;</td>').join('')}</tr>`
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<title>Claim Form — ${profile?.name || ''} — ${MONTHS[month]} ${year}</title>
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:Arial,sans-serif; font-size:8.5px; color:#000; padding:6mm; }
-  h2 { font-size:10px; font-weight:bold; text-align:center; }
-  h3 { font-size:8.5px; font-weight:bold; text-align:center; }
-  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px; }
-  .header-left div, .header-right div { margin-bottom:2px; }
-  .ul { border-bottom:1px solid #000; display:inline-block; min-width:110px; }
-  .ul-sm { border-bottom:1px solid #000; display:inline-block; min-width:70px; }
-  table { border-collapse:collapse; width:100%; }
-  th, td { border:1px solid #000; padding:1px 2px; text-align:center; vertical-align:middle; line-height:1.3; }
-  th { font-weight:bold; font-size:7.5px; background:#f5f5f5; }
-  .totals-row td { font-weight:bold; background:#f0f0f0; }
-  .sig-section { margin-top:6px; display:flex; gap:16px; flex-wrap:wrap; }
-  .sig-section div { margin-bottom:4px; }
-  .official-box { border:1px solid #000; padding:4px; margin-top:6px; }
-  .official-title { font-weight:bold; font-size:8px; text-align:center; margin-bottom:3px; border-bottom:1px solid #000; padding-bottom:2px; }
-  @page { size:A4 landscape; margin:6mm; }
-</style>
-</head>
-<body>
-
-<!-- HEADER -->
-<div class="header">
-  <div class="header-left">
-    <div><strong>FULL NAME:</strong> <span class="ul">${profile?.name || ''}</span></div>
-    <div><strong>ADDRESS:</strong> <span class="ul">&nbsp;</span></div>
-    <div><strong>EMP. NUMBER:</strong> <span class="ul-sm">&nbsp;</span></div>
-    <div><strong>TEL. NUMBER:</strong> <span class="ul-sm">&nbsp;</span></div>
-  </div>
-  <div style="text-align:center">
-    <h2>SOUTHERN REGIONAL HEALTH AUTHORITY</h2>
-    <h3>EMPLOYEE CLAIM FORM</h3>
-    <div style="font-size:8px">Medical Officers &mdash; Secondary Care</div>
-  </div>
-  <div class="header-right" style="text-align:right">
-    <div><strong>PERIOD:</strong> ${MONTHS[month]} ${year}</div>
-    <div><strong>DEPT:</strong> <span class="ul-sm">&nbsp;</span></div>
-    <div><strong>SALARY/GRADE:</strong> ${gradeLabel}</div>
-    <div><strong>FACILITY:</strong> ${profile?.hospital || ''}</div>
-  </div>
-</div>
-
-<!-- DUTY GRID -->
-<table>
-  <thead>
-    <tr>
-      <th rowspan="2" style="width:52px">DATE</th>
-      <th rowspan="2" style="width:42px">NORMAL HRS OF WORK (Shift)</th>
-      <th rowspan="2" style="width:42px">OVERALL DUTY (Time)</th>
-      <th rowspan="2" style="width:24px">TAXI</th>
-      <th colspan="3">SESSIONS / ROSTERED DUTY (PER HR)</th>
-      <th colspan="3">CASUALTY SESSIONS (PER 4 HRS)</th>
-      <th colspan="3">WARD SESSIONS (PER 4 HRS)</th>
-      <th rowspan="2" style="width:52px">NATURE OF DUTY</th>
-    </tr>
-    <tr>
-      <th style="width:26px">W/DAY</th><th style="width:26px">SAT</th><th style="width:30px">SUN/HOL</th>
-      <th style="width:26px">W/DAY</th><th style="width:26px">SAT</th><th style="width:30px">SUN/HOL</th>
-      <th style="width:26px">W/DAY</th><th style="width:26px">SAT</th><th style="width:30px">SUN/HOL</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${rows.map(tr).join('')}
-    ${Array(blankRows).fill(blankTr).join('')}
-    <tr class="totals-row">
+  const totalsRow = `
+    <tr style="font-weight:bold;background:#f0f0f0">
       <td colspan="3" style="text-align:right;padding-right:4px">TOTALS</td>
       <td>${totals.taxi || ''}</td>
       <td>${totals.rstWday || ''}</td><td>${totals.rstSat || ''}</td><td>${totals.rstSunHol || ''}</td>
       <td>${totals.casWday || ''}</td><td>${totals.casSat || ''}</td><td>${totals.casSunHol || ''}</td>
       <td>${totals.wrdWday || ''}</td><td>${totals.wrdSat || ''}</td><td>${totals.wrdSunHol || ''}</td>
       <td></td>
-    </tr>
-  </tbody>
-</table>
+    </tr>`
 
-<!-- OFFICIAL USE ONLY -->
-<div class="official-box" style="margin-top:5px">
-  <div class="official-title">FOR OFFICIAL USE ONLY — CALCULATIONS</div>
+  const calcRows = CALC_CATEGORIES.map(c => {
+    const val = c.key ? (totals[c.key] || '') : ''
+    return `<tr>
+      <td style="text-align:left;padding:1px 4px">${c.label}</td>
+      <td>${val}</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+    </tr>`
+  }).join('')
+
+  const shared = `
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:Arial,sans-serif; font-size:8.5px; color:#000; }
+    h2 { font-size:10px; font-weight:bold; text-align:center; }
+    h3 { font-size:8.5px; font-weight:bold; text-align:center; }
+    .page { padding:6mm; }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px; gap:8px; }
+    .ul { border-bottom:1px solid #000; display:inline-block; min-width:110px; }
+    .ul-sm { border-bottom:1px solid #000; display:inline-block; min-width:70px; }
+    table { border-collapse:collapse; width:100%; }
+    th, td { border:1px solid #000; padding:1px 2px; text-align:center; vertical-align:middle; line-height:1.4; }
+    th { font-weight:bold; font-size:7.5px; background:#f5f5f5; }
+    .sig-line { border-bottom:1px solid #000; display:inline-block; }
+    .page-break { page-break-after:always; break-after:page; }
+    @page { size:A4 landscape; margin:0; }`
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"/>
+<title>Claim Form — ${profile?.name || ''} — ${MONTHS[month]} ${year}</title>
+<style>${shared}</style>
+</head><body>
+
+<!-- ═══════════════ PAGE 1 — FRONT ═══════════════ -->
+<div class="page page-break">
+  <div class="header">
+    <div>
+      <div style="margin-bottom:2px"><strong>FULL NAME:</strong> <span class="ul">${profile?.name || ''}</span></div>
+      <div style="margin-bottom:2px"><strong>ADDRESS:</strong> <span class="ul">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></div>
+      <div style="margin-bottom:2px"><strong>EMP. NUMBER:</strong> <span class="ul-sm">&nbsp;</span></div>
+      <div><strong>TEL. NUMBER:</strong> <span class="ul-sm">&nbsp;</span></div>
+    </div>
+    <div style="text-align:center;min-width:200px">
+      <h2>SOUTHERN REGIONAL HEALTH AUTHORITY</h2>
+      <h3>EMPLOYEE CLAIM FORM</h3>
+      <div style="font-size:8px">Medical Officers &mdash; Secondary Care</div>
+    </div>
+    <div style="text-align:right">
+      <div style="margin-bottom:2px"><strong>PERIOD:</strong> ${MONTHS[month]} ${year}</div>
+      <div style="margin-bottom:2px"><strong>DEPT:</strong> <span class="ul-sm">&nbsp;</span></div>
+      <div style="margin-bottom:2px"><strong>SALARY/GRADE:</strong> ${gradeLabel}</div>
+      <div><strong>FACILITY:</strong> ${profile?.hospital || ''}</div>
+    </div>
+  </div>
+
   <table>
-    <thead>
-      <tr>
-        <th style="width:140px">CATEGORY</th>
-        <th>Total (Hours/Days)</th>
-        <th>Rate</th>
-        <th>Total (HRS/Days)</th>
-        <th>Amount</th>
-      </tr>
-    </thead>
+    ${DUTY_GRID_HEADER}
     <tbody>
-      ${[
-        'Rostered Duty — Weekday', 'Rostered Duty — Saturday', 'Rostered Duty — Sun/Holiday',
-        'Casualty Sessions — Weekday', 'Casualty Sessions — Saturday', 'Casualty Sessions — Sun/Holiday',
-        'Ward Sessions — Weekday', 'Ward Sessions — Saturday', 'Ward Sessions — Sun/Holiday',
-        'Meal / Supper', 'Taxi', 'Holiday',
-      ].map(label => `<tr><td style="text-align:left;padding:1px 3px">${label}</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`).join('')}
-      <tr style="font-weight:bold;background:#f0f0f0"><td style="text-align:right;padding-right:4px" colspan="4">GRAND TOTAL</td><td>&nbsp;</td></tr>
+      ${frontRows.map(dutyTr).join('')}
+      ${Array(frontBlanks).fill(blankTr).join('')}
     </tbody>
   </table>
+
+  <div style="margin-top:8px;font-size:8px;display:flex;flex-wrap:wrap;gap:12px">
+    <div>Signature of Claimant: <span class="sig-line" style="width:130px">&nbsp;</span></div>
+    <div>Certified Hours Worked (Immediate Supervisor): <span class="sig-line" style="width:110px">&nbsp;</span></div>
+    <div>Date: <span class="sig-line" style="width:80px">&nbsp;</span></div>
+    <div>Approved Hours for Payment (RO#): <span class="sig-line" style="width:80px">&nbsp;</span></div>
+    <div>Checked by: <span class="sig-line" style="width:110px">&nbsp;</span></div>
+  </div>
 </div>
 
-<!-- SIGNATURES -->
-<div class="sig-section" style="margin-top:6px;font-size:8px">
-  <div>Signature of Claimant: <span style="border-bottom:1px solid #000;display:inline-block;width:130px">&nbsp;</span></div>
-  <div>Certified Hours Worked (Immediate Supervisor): <span style="border-bottom:1px solid #000;display:inline-block;width:110px">&nbsp;</span></div>
-  <div>Date: <span style="border-bottom:1px solid #000;display:inline-block;width:80px">&nbsp;</span></div>
-  <div>Approved Hours for Payment (RO#): <span style="border-bottom:1px solid #000;display:inline-block;width:80px">&nbsp;</span></div>
-  <div>Checked by: <span style="border-bottom:1px solid #000;display:inline-block;width:110px">&nbsp;</span></div>
-  <div>Calculated by: <span style="border-bottom:1px solid #000;display:inline-block;width:110px">&nbsp;</span></div>
-  <div>Certified by: <span style="border-bottom:1px solid #000;display:inline-block;width:110px">&nbsp;</span></div>
-  <div>Authorized by: <span style="border-bottom:1px solid #000;display:inline-block;width:110px">&nbsp;</span></div>
+<!-- ═══════════════ PAGE 2 — BACK ═══════════════ -->
+<div class="page">
+  <table style="margin-bottom:6px">
+    ${DUTY_GRID_HEADER}
+    <tbody>
+      ${backRows.map(dutyTr).join('')}
+      ${Array(backBlanks).fill(blankTr).join('')}
+      ${totalsRow}
+    </tbody>
+  </table>
+
+  <div style="display:flex;gap:8px;margin-top:4px">
+    <!-- Left: back signature block -->
+    <div style="min-width:160px;font-size:8px;border:1px solid #000;padding:4px;display:flex;flex-direction:column;gap:8px">
+      <div style="font-weight:bold;text-align:center;border-bottom:1px solid #000;padding-bottom:2px;margin-bottom:2px">AUTHORISATIONS</div>
+      <div>Calculated By: <span class="sig-line" style="width:90px">&nbsp;</span></div>
+      <div>Checked By<br/>(Calculation &amp; Rate): <span class="sig-line" style="width:90px">&nbsp;</span></div>
+      <div>Cross-Checked By: <span class="sig-line" style="width:90px">&nbsp;</span></div>
+      <div>Certified By: <span class="sig-line" style="width:90px">&nbsp;</span></div>
+      <div>Authorized by: <span class="sig-line" style="width:90px">&nbsp;</span></div>
+    </div>
+
+    <!-- Right: FOR OFFICIAL USE ONLY calculations -->
+    <div style="flex:1">
+      <div style="font-weight:bold;text-align:center;border:1px solid #000;padding:2px;background:#f0f0f0;font-size:8px;margin-bottom:2px">
+        FOR OFFICIAL USE ONLY — CALCULATIONS
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align:left;width:180px">CATEGORY</th>
+            <th>Total (Hours / Days)</th>
+            <th>Rate</th>
+            <th>Total (HRS / Days)</th>
+            <th>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${calcRows}
+          <tr style="font-weight:bold;background:#f0f0f0">
+            <td colspan="4" style="text-align:right;padding-right:6px">GRAND TOTAL</td>
+            <td>&nbsp;</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
-</body>
-</html>`
+</body></html>`
 }
 
 export default function ClaimForm() {
@@ -225,7 +256,7 @@ export default function ClaimForm() {
         <div>
           <h3 className="font-semibold text-gray-900">Ministry of Health Claim Form</h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            Auto-filled from your logged duties · Print, sign, and submit
+            2-page form (front &amp; back) · Auto-filled from your duties · Print, sign &amp; submit
           </p>
         </div>
         <button
@@ -234,7 +265,7 @@ export default function ClaimForm() {
           className="flex items-center gap-2 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-40"
         >
           <Printer size={15} />
-          Print Form
+          Print Form (2 pages)
         </button>
       </div>
 
@@ -245,15 +276,12 @@ export default function ClaimForm() {
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-          {/* Preview header */}
           <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50">
             <p className="text-xs font-medium text-gray-600">
-              Preview — {sorted.length} {sorted.length === 1 ? 'duty' : 'duties'} for {MONTHS[month]} {year}
+              Preview — {sorted.length} {sorted.length === 1 ? 'duty' : 'duties'} · Page 1 shows first 14 rows, Page 2 shows remainder + calculations
             </p>
-            <p className="text-xs text-gray-400">Opens print dialog in a new window</p>
           </div>
 
-          {/* Preview table */}
           <div className="overflow-x-auto p-4">
             <table className="w-full text-[10px] border-collapse">
               <thead>
@@ -285,8 +313,11 @@ export default function ClaimForm() {
                 {sorted.map((duty, i) => {
                   const r = dutyToRow(duty.typeId, duty.taxi)
                   return (
-                    <tr key={i} className="hover:bg-gray-50">
-                      <td className="border border-gray-200 px-1 py-1 font-medium whitespace-nowrap">{dateLabel(duty.date)}</td>
+                    <tr key={i} className={i === 13 ? 'border-t-4 border-blue-300' : ''}>
+                      <td className="border border-gray-200 px-1 py-1 font-medium whitespace-nowrap">
+                        {i === 14 && <span className="text-blue-500 text-[8px] mr-1">pg2→</span>}
+                        {dateLabel(duty.date)}
+                      </td>
                       <td className="border border-gray-200 px-1 py-1 text-center">{r.normalHrs}</td>
                       <td className="border border-gray-200 px-1 py-1 text-center">{r.overallDuty}</td>
                       <td className="border border-gray-200 px-1 py-1 text-center">{r.taxiMark}</td>
@@ -309,8 +340,9 @@ export default function ClaimForm() {
 
           <div className="px-5 py-3 bg-blue-50 border-t border-blue-100">
             <p className="text-xs text-blue-700">
-              <strong>Auto-filled:</strong> Name, grade, facility, period, all duty rows. &nbsp;
-              <strong>Fill manually before submitting:</strong> Address, Emp #, Tel #, Dept, and all signature lines.
+              <strong>Page 1 (front):</strong> Header + first 14 duty rows + claimant signature lines. &nbsp;
+              <strong>Page 2 (back):</strong> Remaining duties + column totals + FOR OFFICIAL USE ONLY calculations table + authorisation signatures.
+              &nbsp; Fill in Address, Emp #, Tel #, and Dept manually before submitting.
             </p>
           </div>
         </div>
