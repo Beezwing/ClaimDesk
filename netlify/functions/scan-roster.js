@@ -1,9 +1,11 @@
 /**
  * Netlify Function: scan-roster
- * Two-pass AI roster analysis for maximum accuracy across all roster formats.
+ * Two-pass AI roster analysis — works across ALL hospital roster formats.
  *
  * Pass 1 — Layout analysis: Claude describes the roster structure
- * Pass 2 — Duty extraction: Claude extracts duties using the layout it just described
+ * Pass 2 — Duty extraction: Claude extracts duties for the SPECIFIC named doctor
+ *
+ * Full name matching is used to avoid confusion when multiple doctors share a surname.
  */
 
 const MONTHS = [
@@ -22,6 +24,16 @@ function buildCalendar(year, month) {
     lines.push(`${date} = ${dayName}`)
   }
   return lines.join('\n')
+}
+
+// Strip "Dr." / "Prof." / "Mr." / "Mrs." / "Ms." prefixes and return name parts
+function parseName(fullName) {
+  const stripped = fullName.replace(/^(Dr\.?|Prof\.?|Mr\.?|Mrs\.?|Ms\.?)\s+/i, '').trim()
+  const parts = stripped.split(/\s+/)
+  const lastName = parts[parts.length - 1].toUpperCase()
+  const firstName = parts[0].toUpperCase()
+  const firstInitial = firstName[0]
+  return { firstName, lastName, firstInitial, stripped }
 }
 
 async function callClaude(apiKey, messages, maxTokens = 1024) {
@@ -75,11 +87,12 @@ exports.handler = async (event) => {
   try { body = JSON.parse(event.body) }
   catch { return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON body' }) } }
 
-  const { imageBase64, mediaType, month, year, fullName, lastName, hospital } = body
+  const { imageBase64, mediaType, month, year, fullName, hospital } = body
   if (!imageBase64 || !mediaType || month === undefined || !year || !fullName) {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing required fields' }) }
   }
 
+  const { firstName, lastName, firstInitial, stripped: cleanName } = parseName(fullName)
   const isCMC = (hospital || '').toLowerCase().includes('caballero')
 
   const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY
@@ -99,36 +112,43 @@ exports.handler = async (event) => {
           type: 'text',
           text: `This is a hospital duty roster for ${MONTHS[month]} ${year}${hospital ? ` from ${hospital}` : ''}.
 
-Analyse this roster and answer ALL of the following questions clearly and concisely:
+We are looking for duties assigned to: "${cleanName}" (first name: ${firstName}, last name: ${lastName}, first initial: ${firstInitial}).
 
-1. What is the overall layout?
-   - Option A: CALENDAR GRID — dates are laid out in a monthly calendar (Sun–Sat columns), each cell has a date number and one or more staff names assigned to that day.
-   - Option B: DUTY TABLE — rows are dates/days, columns are duty sections (e.g. "8am-4pm" daytime AND "4pm-8am" overnight/rostered).
-   - Which is it?
+IMPORTANT — name uniqueness: There may be multiple staff members with the surname "${lastName}". We need duties for "${cleanName}" ONLY — not any other person who shares that surname.
 
-2. If Option B: Are there separate sections for DAYTIME and OVERNIGHT duties? Where is the overnight/on-call section (column heading)?
+Analyse this roster and answer ALL of the following questions:
 
-3. How are staff names written? (e.g. SURNAME only, First Last, paired as "Name1/Name2")
+1. LAYOUT TYPE — which of these best describes this roster?
+   A) CALENDAR GRID: a monthly calendar grid (days of week as columns), each date cell contains the name(s) of staff assigned to work that day.
+   B) DUTY TABLE: a table where rows = dates, columns = different duty types or time periods (e.g. daytime vs overnight, or different wards/roles).
+   C) STAFF ROWS: a table where rows = staff members, columns = dates (each cell shows if that staff member works that day).
+   D) OTHER: describe it.
 
-4. Does the name "${lastName}" appear anywhere in this roster? How many times and on which dates?
+2. How are staff names written in this roster? (e.g. SURNAME only, First Last, Last First, SURNAME Initial, paired as "Name1/Name2", with "Dr." prefix, etc.)
 
-Be specific and accurate. This analysis will be used to extract duties in the next step.`,
+3. If DUTY TABLE: which column or section contains the on-call / overnight / rostered duties (vs daytime)?
+
+4. Does "${lastName}" appear in this roster? If yes, are there multiple different people with that surname? How can they be told apart (e.g. different first name, initial, or position)?
+
+5. How many times does "${cleanName}" (specifically, not others with the same surname) appear, and on which dates?
+
+Be precise. This analysis is used to extract duties in the next step.`,
         },
       ],
-    }], 1024)
+    }], 1200)
 
     console.log('Layout analysis:', layoutAnalysis)
 
     // ── PASS 2: Extract duties using layout knowledge ────────────────────────
     const calendar = buildCalendar(year, month)
 
-    const cmcNote = isCMC
-      ? `\nIMPORTANT: This is a Caballero Medical Center (CMC) day rota. Every shift found for "${lastName}" must use typeId "cmc_day" regardless of the day of week.`
-      : `\nCLASSIFY each duty with the correct typeId:
-- Monday to Friday overnight → "weekday"
-- Saturday overnight → "saturday"
-- Sunday overnight → "holiday"
-- Public Holiday overnight → "holiday"
+    const typeRules = isCMC
+      ? `DUTY TYPE: This is a Caballero Medical Center (CMC) day rota. Use typeId "cmc_day" for every shift found.`
+      : `DUTY TYPE — classify each duty using the correct typeId:
+- Monday–Friday overnight/on-call → "weekday"
+- Saturday overnight/on-call → "saturday"
+- Sunday overnight/on-call → "holiday"
+- Public Holiday overnight/on-call → "holiday"
 - Weekday casualty session (4hr block) → "casualty_weekday"
 - Saturday casualty session → "casualty_saturday"
 - Sunday/Holiday casualty session → "casualty_holiday"
@@ -145,33 +165,39 @@ Be specific and accurate. This analysis will be used to extract duties in the ne
             type: 'text',
             text: `This is a hospital duty roster for ${MONTHS[month]} ${year}${hospital ? ` from ${hospital}` : ''}.
 
-A previous analysis of this roster found:
+TARGET DOCTOR: "${cleanName}"
+- First name: ${firstName}
+- Last name: ${lastName}
+- First initial: ${firstInitial}
+
+⚠️ NAME CONFLICT WARNING: If there are multiple staff members with the surname "${lastName}", you MUST distinguish between them using their first name or initial. Only extract duties for "${cleanName}" — ignore any other person named "${lastName}".
+
+ROSTER LAYOUT (from prior analysis):
 ${layoutAnalysis}
 
-Now extract ALL duties assigned to "${fullName}" (last name: "${lastName}").
+EXTRACTION RULES based on layout:
+- CALENDAR GRID: extract every date cell where "${cleanName}"'s name appears.
+- DUTY TABLE: extract only from the on-call/overnight column — ignore daytime column.
+- STAFF ROWS: find the row for "${cleanName}" and extract every date where they are scheduled.
+- A cell matches if it contains "${lastName}" AND matches "${firstName}" or initial "${firstInitial}" (when names are distinguished). If only one "${lastName}" exists in the roster, any appearance counts.
+- Check EVERY date — do not skip any.
+- If "${cleanName}" is not found at all: return {"notFound": true}
 
-RULES:
-- If this is a CALENDAR GRID layout: each cell with "${lastName}"'s name is one duty — extract every date where their name appears in the cell.
-- If this is a DUTY TABLE layout: only extract duties from the OVERNIGHT / ON-CALL column (ignore daytime column).
-- A cell counts as a duty if "${lastName}" appears anywhere in it (including paired names like "Smith/Jones").
-- Go through EVERY date/cell — do not skip any.
-- If "${lastName}" does not appear at all, return: {"notFound": true}
-
-CALENDAR (use this to get the exact date for each day):
+CALENDAR — use this to map day numbers to exact dates and day of week:
 ${calendar}
-${cmcNote}
 
-Return a JSON array of every duty found:
-[{"date":"${year}-${m}-01","typeId":"cmc_day"},{"date":"${year}-${m}-10","typeId":"cmc_day"},...]
+${typeRules}
 
-IMPORTANT: Be exhaustive. Check every single cell. Do NOT stop early.
-Return ONLY the JSON (no explanation, no markdown).`,
+Return a JSON array of duties:
+[{"date":"${year}-${m}-01","typeId":"weekday"},{"date":"${year}-${m}-07","typeId":"saturday"},...]
+
+Return ONLY the JSON array. No explanation, no markdown.`,
           },
         ],
       },
       {
         role: 'assistant',
-        content: 'I have carefully reviewed every cell in the roster. Here is the complete list:',
+        content: 'I have checked every date in the roster for the specific doctor requested. Here is the complete list:',
       },
     ], 4096)
 
@@ -194,7 +220,7 @@ Return ONLY the JSON (no explanation, no markdown).`,
       headers,
       body: JSON.stringify({
         content: [{ text: JSON.stringify(duties) }],
-        layoutAnalysis, // pass back for debugging
+        layoutAnalysis,
       }),
     }
 
