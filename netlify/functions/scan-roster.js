@@ -130,9 +130,9 @@ Analyse this roster and answer ALL of the following questions:
 
 4. Does "${lastName}" appear in this roster? If yes, are there multiple different people with that surname? How can they be told apart (e.g. different first name, initial, or position)?
 
-5. How many times does "${cleanName}" (specifically, not others with the same surname) appear, and on which dates?
+5. Go through the roster SYSTEMATICALLY — week by week for a calendar grid, or row by row for a table — and list EVERY date where "${cleanName}" (specifically) appears. Write out each date explicitly, e.g. "Feb 1, Feb 3, Feb 10, Feb 12, Feb 20, Feb 27". Count them.
 
-Be precise. This analysis is used to extract duties in the next step.`,
+Be precise. This analysis is used to verify the extraction in the next step.`,
         },
       ],
     }], 1200)
@@ -176,12 +176,13 @@ ROSTER LAYOUT (from prior analysis):
 ${layoutAnalysis}
 
 EXTRACTION RULES based on layout:
-- CALENDAR GRID: extract every date cell where "${cleanName}"'s name appears.
-- DUTY TABLE: extract only from the on-call/overnight column — ignore daytime column.
+- CALENDAR GRID: go week by week (each row of the grid), check EVERY cell in EVERY row. Extract every date where "${cleanName}"'s name appears.
+- DUTY TABLE: go row by row through every date. Extract only from the on-call/overnight column — ignore daytime column.
 - STAFF ROWS: find the row for "${cleanName}" and extract every date where they are scheduled.
 - A cell matches if it contains "${lastName}" AND matches "${firstName}" or initial "${firstInitial}" (when names are distinguished). If only one "${lastName}" exists in the roster, any appearance counts.
-- Check EVERY date — do not skip any.
 - If "${cleanName}" is not found at all: return {"notFound": true}
+
+⚠️ VERIFICATION: The prior analysis explicitly listed every date for "${cleanName}". Your JSON array MUST include ALL of those dates — do not omit any. If your count is lower than what the prior analysis found, re-examine those weeks.
 
 CALENDAR — use this to map day numbers to exact dates and day of week:
 ${calendar}
