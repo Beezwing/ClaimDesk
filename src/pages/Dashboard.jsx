@@ -5,12 +5,13 @@ import { useSalary } from '../context/SalaryContext'
 import DutyCalendar from '../components/DutyCalendar'
 import SalaryBreakdown from '../components/SalaryBreakdown'
 import RosterUpload from '../components/RosterUpload'
+import ClaimForm from '../components/ClaimForm'
 import { exportSalaryPDF } from '../services/exportPdf'
 import { exportSalaryExcel } from '../services/exportExcel'
 import { saveMonthRecord } from '../services/firestoreDb'
 import { GRADES } from '../data/rates'
 
-const TABS = ['Calendar', 'Roster Upload', 'Salary Summary']
+const TABS = ['Calendar', 'Roster Upload', 'Salary Summary', 'Claim Form']
 
 export default function Dashboard() {
   const { user, profile } = useAuth()
@@ -212,6 +213,7 @@ export default function Dashboard() {
           )}
         </div>
       )}
+      {tab === 3 && <ClaimForm />}
     </div>
   )
 }
