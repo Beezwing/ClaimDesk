@@ -37,22 +37,13 @@ app.use((req, res, next) => {
 });
 
 // ─── FIREBASE TOKEN VERIFIER ───────────────────────────────────────────────────
-function verifyFirebaseToken(idToken) {
+// Cache public keys — they rotate every ~6 hours; we cache for 5 hours to avoid
+// making an outbound HTTPS call on every single scan request (which caused
+// intermittent 401s whenever googleapis.com had a brief hiccup).
+let _keyCache = { keys: null, expiresAt: 0 };
+
+function fetchFirebasePublicKeys() {
   return new Promise((resolve, reject) => {
-    const parts = idToken.split(".");
-    if (parts.length !== 3) return reject(new Error("Invalid token format"));
-    let header, payload;
-    try {
-      header = JSON.parse(Buffer.from(parts[0], "base64url").toString());
-      payload = JSON.parse(Buffer.from(parts[1], "base64url").toString());
-    } catch { return reject(new Error("Invalid token encoding")); }
-
-    const now = Math.floor(Date.now() / 1000);
-    if (payload.exp < now) return reject(new Error("Token expired"));
-    if (payload.aud !== FIREBASE_PROJECT_ID) return reject(new Error("Invalid audience"));
-    if (payload.iss !== `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`) return reject(new Error("Invalid issuer"));
-    if (!payload.sub) return reject(new Error("No subject"));
-
     https.get(
       "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com",
       (res) => {
@@ -61,13 +52,54 @@ function verifyFirebaseToken(idToken) {
         res.on("end", () => {
           try {
             const keys = JSON.parse(data);
-            if (!keys[header.kid]) return reject(new Error("Key not found"));
-            resolve({ uid: payload.sub, email: payload.email });
-          } catch { reject(new Error("Key verification failed")); }
+            // Cache for 5 hours
+            _keyCache = { keys, expiresAt: Date.now() + 5 * 60 * 60 * 1000 };
+            resolve(keys);
+          } catch { reject(new Error("Key fetch failed — invalid JSON from Google")); }
         });
       }
-    ).on("error", () => reject(new Error("Could not fetch public keys")));
+    ).on("error", (err) => reject(new Error(`Could not fetch public keys: ${err.message}`)));
   });
+}
+
+async function getFirebasePublicKeys() {
+  if (_keyCache.keys && Date.now() < _keyCache.expiresAt) return _keyCache.keys;
+  return fetchFirebasePublicKeys();
+}
+
+async function verifyFirebaseToken(idToken) {
+  const parts = idToken.split(".");
+  if (parts.length !== 3) throw new Error("Invalid token format");
+
+  let header, payload;
+  try {
+    header = JSON.parse(Buffer.from(parts[0], "base64url").toString());
+    payload = JSON.parse(Buffer.from(parts[1], "base64url").toString());
+  } catch { throw new Error("Invalid token encoding"); }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (payload.exp < now) throw new Error("Token expired");
+  const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+  if (!aud.includes(FIREBASE_PROJECT_ID)) throw new Error("Invalid audience");
+  if (payload.iss !== `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`) throw new Error("Invalid issuer");
+  if (!payload.sub) throw new Error("No subject");
+
+  let keys;
+  try {
+    keys = await getFirebasePublicKeys();
+  } catch (e) {
+    // If fresh fetch fails, use stale cache rather than rejecting all tokens
+    if (_keyCache.keys) {
+      console.log("Key fetch failed, using stale cache:", e.message);
+      keys = _keyCache.keys;
+    } else {
+      throw new Error("Could not fetch Firebase public keys and no cache available");
+    }
+  }
+
+  if (!keys[header.kid]) throw new Error(`Key not found (kid=${header.kid})`);
+
+  return { uid: payload.sub, email: payload.email };
 }
 
 // ─── AUTH MIDDLEWARE ───────────────────────────────────────────────────────────
@@ -140,7 +172,7 @@ Common Jamaican billers: JPS, NWC, Flow, Digicel, LIME, Mars Cable, Nycmar, Sagi
   try {
     console.log(`[SCAN] User ${uid} scanning ${mimeType}`);
     const requestBody = JSON.stringify({
-      model: "claude-sonnet-4-5",
+      model: "claude-haiku-4-5",
       max_tokens: 500,
       messages: [{ role: "user", content: messageContent }],
     });
@@ -162,13 +194,16 @@ Common Jamaican billers: JPS, NWC, Flow, Digicel, LIME, Mars Cable, Nycmar, Sagi
         apiRes.on("data", (c) => (data += c));
         apiRes.on("end", () => {
           if (apiRes.statusCode !== 200) {
-            console.log(`Anthropic error ${apiRes.statusCode}:`, data);
-            reject(new Error(`Anthropic error: ${apiRes.statusCode}`));
+            console.log(`Anthropic error ${apiRes.statusCode}:`, data.slice(0, 300));
+            reject(new Error(`Anthropic error: ${apiRes.statusCode} - ${data.slice(0, 200)}`));
             return;
           }
-          resolve(JSON.parse(data));
+          try { resolve(JSON.parse(data)); }
+          catch (e) { reject(new Error("Invalid JSON from Anthropic")); }
         });
       });
+      // 28-second timeout on the Anthropic request (client has 30s total)
+      apiReq.setTimeout(28000, () => { apiReq.destroy(); reject(new Error("Anthropic request timed out")); });
       apiReq.on("error", reject);
       apiReq.write(requestBody);
       apiReq.end();
@@ -177,8 +212,15 @@ Common Jamaican billers: JPS, NWC, Flow, Digicel, LIME, Mars Cable, Nycmar, Sagi
     const textContent = result.content?.filter((c) => c.type === "text").map((c) => c.text).join("") || "";
     if (!textContent) return res.status(500).json({ error: "No response from AI" });
 
+    // Strip markdown code fences if model wraps JSON in them
     const clean = textContent.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
-    const extracted = JSON.parse(clean);
+    let extracted;
+    try {
+      extracted = JSON.parse(clean);
+    } catch (parseErr) {
+      console.error(`[SCAN] JSON parse failed for ${uid}. Raw:`, clean.slice(0, 300));
+      return res.status(500).json({ error: "AI returned unreadable response" });
+    }
     console.log(`[SCAN] Success for ${uid}: ${extracted.billerName}`);
     return res.json({ success: true, data: extracted });
 
@@ -236,7 +278,7 @@ If this is not a receipt, return: {"error": "Not a receipt"}`;
   try {
     console.log(`[RECEIPT SCAN] User ${uid}`);
     const requestBody = JSON.stringify({
-      model: "claude-sonnet-4-5",
+      model: "claude-haiku-4-5",
       max_tokens: 800,
       messages: [{ role: "user", content: messageContent }],
     });
@@ -258,12 +300,15 @@ If this is not a receipt, return: {"error": "Not a receipt"}`;
         apiRes.on("data", (c) => (data += c));
         apiRes.on("end", () => {
           if (apiRes.statusCode !== 200) {
+            console.log(`Anthropic receipt error ${apiRes.statusCode}:`, data.slice(0, 300));
             reject(new Error(`Anthropic error: ${apiRes.statusCode}`));
             return;
           }
-          resolve(JSON.parse(data));
+          try { resolve(JSON.parse(data)); }
+          catch (e) { reject(new Error("Invalid JSON from Anthropic")); }
         });
       });
+      apiReq.setTimeout(28000, () => { apiReq.destroy(); reject(new Error("Anthropic request timed out")); });
       apiReq.on("error", reject);
       apiReq.write(requestBody);
       apiReq.end();
@@ -273,7 +318,13 @@ If this is not a receipt, return: {"error": "Not a receipt"}`;
     if (!textContent) return res.status(500).json({ error: "No response from AI" });
 
     const clean = textContent.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
-    const extracted = JSON.parse(clean);
+    let extracted;
+    try {
+      extracted = JSON.parse(clean);
+    } catch (parseErr) {
+      console.error("[RECEIPT SCAN] JSON parse failed. Raw:", clean.slice(0, 300));
+      return res.status(500).json({ error: "AI returned unreadable response" });
+    }
 
     if (extracted.error) {
       return res.status(400).json({ error: extracted.error });
