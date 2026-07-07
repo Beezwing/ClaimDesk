@@ -99,7 +99,7 @@ async function verifyFirebaseToken(idToken) {
 
   if (!keys[header.kid]) throw new Error(`Key not found (kid=${header.kid})`);
 
-  return { uid: payload.sub, email: payload.email };
+  return { uid: payload.sub, email: payload.email || "" };
 }
 
 // ─── AUTH MIDDLEWARE ───────────────────────────────────────────────────────────
@@ -121,6 +121,238 @@ async function authenticate(req, res, next) {
     return res.status(401).json({ error: "Unauthorized - invalid Firebase token" });
   }
 }
+
+// ─── PAYMENT CONFIG ───────────────────────────────────────────────────────────
+const GUMROAD_ACCESS_TOKEN  = process.env.GUMROAD_ACCESS_TOKEN  || "";
+const GUMROAD_PRO_ID        = process.env.GUMROAD_PRO_ID        || "";
+const GUMROAD_FAMILY_ID     = process.env.GUMROAD_FAMILY_ID     || "";
+const LUNIPAY_WEBHOOK_SECRET = process.env.LUNIPAY_WEBHOOK_SECRET || "";
+
+// Public Firebase API key (same as in mobile/web apps — safe to include here)
+const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || "AIzaSyCtkq13sK18fI8jbXp2X9Sj745GPyRvLhE";
+const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+
+// In-memory store (fast path) — also write-through to Firestore (survives restarts)
+const pendingUpgrades = new Map();
+const pendingByEmail  = new Map();
+
+function firestoreReq(method, path, body) {
+  return new Promise((resolve) => {
+    const fullPath = `/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents${path}?key=${FIREBASE_API_KEY}`;
+    const bodyStr = body ? JSON.stringify(body) : null;
+    const options = {
+      hostname: "firestore.googleapis.com",
+      path: fullPath,
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(bodyStr ? { "Content-Length": Buffer.byteLength(bodyStr) } : {}),
+      },
+    };
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.on("data", c => (data += c));
+      res.on("end", () => {
+        try { resolve({ status: res.statusCode, data: data ? JSON.parse(data) : null }); }
+        catch { resolve({ status: res.statusCode, data: null }); }
+      });
+    });
+    req.on("error", (e) => { console.log("[FIRESTORE]", method, path, e.message); resolve({ status: 0, data: null }); });
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
+}
+
+async function fsSetPending(key, entry) {
+  const docId = encodeURIComponent(key);
+  const fields = {
+    plan:   { stringValue: entry.plan || "pro" },
+    email:  { stringValue: entry.email || "" },
+    source: { stringValue: entry.source || "" },
+    at:     { integerValue: String(entry.at || Date.now()) },
+  };
+  const r = await firestoreReq("PATCH", `/pendingUpgrades/${docId}`, { fields });
+  if (r.status !== 200) console.log("[FIRESTORE] fsSetPending error", r.status, JSON.stringify(r.data).slice(0,200));
+}
+
+async function fsGetPending(key) {
+  const docId = encodeURIComponent(key);
+  const r = await firestoreReq("GET", `/pendingUpgrades/${docId}`, null);
+  if (r.status !== 200 || !r.data?.fields) return null;
+  const f = r.data.fields;
+  return {
+    plan:   f.plan?.stringValue || "pro",
+    email:  f.email?.stringValue || "",
+    source: f.source?.stringValue || "",
+    at:     parseInt(f.at?.integerValue || "0"),
+  };
+}
+
+async function fsDeletePending(key) {
+  const docId = encodeURIComponent(key);
+  await firestoreReq("DELETE", `/pendingUpgrades/${docId}`, null);
+}
+
+// ─── GUMROAD WEBHOOK ──────────────────────────────────────────────────────────
+// POST /api/payments/gumroad-webhook
+// Gumroad fires this on every sale. We extract the UID from custom_fields,
+// determine the plan from product_id, and queue an upgrade for the user.
+app.post("/api/payments/gumroad-webhook", express.urlencoded({ extended: true }), (req, res) => {
+  const body = req.body;
+  console.log("[GUMROAD WEBHOOK]", JSON.stringify(body).slice(0, 300));
+
+  const uid = body["custom_fields[uid]"] || body.uid || "";
+  const productId = body.product_id || body.product_permalink || "";
+  const email = body.email || "";
+  const saleId = body.sale_id || "";
+
+  if (!uid && !email) {
+    console.log("[GUMROAD WEBHOOK] No uid or email — cannot map to user");
+    return res.sendStatus(200); // still 200 so Gumroad doesn't retry
+  }
+
+  let plan = "pro";
+  if (GUMROAD_FAMILY_ID && (productId === GUMROAD_FAMILY_ID)) plan = "family";
+
+  const isRefund = body.refunded === "true";
+  const isCancelled = body.subscription_cancelled === "true" || body.ended_at;
+
+  if (isRefund || isCancelled) {
+    // Downgrade — store downgrade signal
+    if (uid) pendingUpgrades.set(uid, { plan: "free", source: "gumroad", saleId, at: Date.now() });
+    console.log(`[GUMROAD] Downgrade to free for uid=${uid}`);
+  } else {
+    if (uid) pendingUpgrades.set(uid, { plan, source: "gumroad", saleId, email, at: Date.now() });
+    console.log(`[GUMROAD] Upgrade to ${plan} for uid=${uid}`);
+  }
+
+  return res.sendStatus(200);
+});
+
+// ─── LUNIPAY WEBHOOK ─────────────────────────────────────────────────────────
+// POST /api/payments/lunipay-webhook
+// Lunipay fires this on payment. We key upgrades by email since Lunipay
+// doesn't support success-redirect URLs with our UID embedded.
+app.post("/api/payments/lunipay-webhook", (req, res) => {
+  const body = req.body;
+  console.log("[LUNIPAY WEBHOOK]", JSON.stringify(body).slice(0, 500));
+
+  // Lunipay sends customer email + any metadata set on the payment link
+  const email  = (body?.customer?.email || body?.email || body?.customer_email || "").toLowerCase().trim();
+  const uid    = body?.metadata?.uid  || body?.uid  || "";
+  const plan   = body?.metadata?.plan || body?.plan || "pro";
+  const status = body?.status || body?.payment_status || body?.event || "";
+
+  // Treat any webhook as "paid" unless it is explicitly a failure/refund/cancellation.
+  // Lunipay only POSTs webhooks for successful payments in practice.
+  const isCancelled  = Boolean(status) && ["refunded","cancelled","failed","payment.failed","charge.failed",
+    "checkout.session.expired","subscription_cancelled","payment_failed","charge_failed"].some(s => status.toLowerCase().includes(s));
+  const isPaid       = !isCancelled;
+
+  if (isPaid) {
+    const entry = { plan, source: "lunipay", email, at: Date.now() };
+    if (uid)   { pendingUpgrades.set(uid, entry);   fsSetPending(uid, entry); }
+    if (email) { pendingByEmail.set(email, uid || email); pendingUpgrades.set(email, entry); fsSetPending(email, entry); }
+    console.log(`[LUNIPAY] Upgrade to ${plan} — uid=${uid || "unknown"} email=${email}`);
+  } else if (isCancelled) {
+    const entry = { plan: "free", source: "lunipay", email, at: Date.now() };
+    if (uid)   { pendingUpgrades.set(uid,   entry); fsSetPending(uid, entry); }
+    if (email) { pendingUpgrades.set(email, entry); fsSetPending(email, entry); }
+    console.log(`[LUNIPAY] Downgrade to free — email=${email}`);
+  } else {
+    console.log(`[LUNIPAY] Unhandled status: ${status} — full body: ${JSON.stringify(body)}`);
+  }
+
+  return res.sendStatus(200);
+});
+
+// ─── VERIFY GUMROAD LICENSE ──────────────────────────────────────────────────
+// POST /api/payments/verify-license (authenticated)
+// Called by the client after a successful Gumroad purchase redirect.
+// Verifies the license key with Gumroad and returns the plan.
+app.post("/api/payments/verify-license", authenticate, async (req, res) => {
+  const { license_key, plan } = req.body;
+  const { uid } = req.user;
+
+  if (!license_key) return res.status(400).json({ error: "license_key required" });
+  if (!GUMROAD_ACCESS_TOKEN) {
+    // No token configured — trust the client (for testing without Gumroad set up)
+    pendingUpgrades.set(uid, { plan: plan || "pro", source: "gumroad_manual", at: Date.now() });
+    return res.json({ success: true, plan: plan || "pro", verified: false });
+  }
+
+  const productId = plan === "family" ? GUMROAD_FAMILY_ID : GUMROAD_PRO_ID;
+  if (!productId) {
+    pendingUpgrades.set(uid, { plan: plan || "pro", source: "gumroad_manual", at: Date.now() });
+    return res.json({ success: true, plan: plan || "pro", verified: false });
+  }
+
+  try {
+    const verifyResult = await new Promise((resolve, reject) => {
+      const body = `product_id=${encodeURIComponent(productId)}&license_key=${encodeURIComponent(license_key)}&increment_uses_count=false`;
+      const options = {
+        hostname: "api.gumroad.com",
+        path: "/v2/licenses/verify",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Authorization": `Bearer ${GUMROAD_ACCESS_TOKEN}`,
+          "Content-Length": Buffer.byteLength(body),
+        },
+      };
+      const req = https.request(options, (apiRes) => {
+        let data = "";
+        apiRes.on("data", c => data += c);
+        apiRes.on("end", () => { try { resolve(JSON.parse(data)); } catch { reject(new Error("Invalid JSON")); } });
+      });
+      req.on("error", reject);
+      req.write(body);
+      req.end();
+    });
+
+    if (!verifyResult.success) {
+      return res.status(400).json({ error: "Invalid or already used license key" });
+    }
+
+    pendingUpgrades.set(uid, { plan: plan || "pro", source: "gumroad_verified", at: Date.now() });
+    console.log(`[VERIFY] Gumroad license verified for uid=${uid}, plan=${plan}`);
+    return res.json({ success: true, plan: plan || "pro", verified: true });
+  } catch (e) {
+    console.error("[VERIFY] Gumroad error:", e.message);
+    return res.status(500).json({ error: "Failed to verify with Gumroad" });
+  }
+});
+
+// ─── GET PENDING UPGRADE ─────────────────────────────────────────────────────
+// GET /api/payments/pending (authenticated)
+// Client calls this after tapping "I've paid". Checks by UID first, then by
+// the user's email — so Lunipay webhooks (email-only) are found correctly.
+// Falls back to Firestore so Railway restarts don't lose pending payments.
+app.get("/api/payments/pending", authenticate, async (req, res) => {
+  const { uid, email } = req.user;
+  const emailKey = (email || "").toLowerCase().trim();
+
+  // Fast path: in-memory (same Railway container instance)
+  let pending = pendingUpgrades.get(uid);
+  if (!pending && emailKey) pending = pendingUpgrades.get(emailKey);
+
+  // Slow path: Firestore (survives server restarts)
+  if (!pending) {
+    pending = await fsGetPending(uid);
+    if (!pending && emailKey) pending = await fsGetPending(emailKey);
+  }
+
+  if (!pending) return res.json({ pending: null });
+
+  // Consume — client applies upgrade to Firestore
+  pendingUpgrades.delete(uid);
+  if (emailKey) pendingUpgrades.delete(emailKey);
+  fsDeletePending(uid);
+  if (emailKey) fsDeletePending(emailKey);
+
+  console.log(`[PENDING] Dispatching upgrade uid=${uid} email=${emailKey} plan=${pending.plan}`);
+  return res.json({ pending });
+});
 
 // ─── HEALTH CHECK ──────────────────────────────────────────────────────────────
 app.get("/health", (req, res) => {
