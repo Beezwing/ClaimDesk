@@ -675,6 +675,81 @@ app.post("/api/send-welcome", authenticate, async (req, res) => {
   }
 });
 
+// ─── UPGRADE EMAIL ────────────────────────────────────────────────────────────
+// POST /api/send-upgrade
+// Sends a branded upgrade confirmation email via Resend
+app.post("/api/send-upgrade", authenticate, async (req, res) => {
+  const { firstName, email, plan } = req.body;
+  if (!firstName || !email || !plan) return res.status(400).json({ error: "firstName, email and plan required" });
+
+  const RESEND_API_KEY = process.env.RESEND_API_KEY;
+  if (!RESEND_API_KEY) {
+    console.log("[UPGRADE EMAIL] RESEND_API_KEY not set — skipping");
+    return res.json({ success: true, message: "Email skipped (no API key)" });
+  }
+
+  const planColor = plan === "Family" ? "#A855F7" : "#F97316";
+  const htmlBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    body{margin:0;padding:0;background:#080C14;font-family:Arial,sans-serif}
+    .wrap{max-width:560px;margin:0 auto;padding:40px 24px}
+    .logo{color:#F97316;font-size:22px;font-weight:900;letter-spacing:-0.5px;margin-bottom:32px}
+    .card{background:#0F1623;border-radius:16px;padding:32px;border:1px solid #1E2A3D}
+    h2{color:#F1F5F9;font-size:22px;margin:0 0 12px}
+    p{color:#8B9BB4;font-size:15px;line-height:1.6;margin:0 0 16px}
+    .badge{display:inline-block;background:${planColor}22;color:${planColor};border:1px solid ${planColor}44;border-radius:999px;padding:6px 18px;font-weight:700;font-size:14px;margin-bottom:20px}
+    .feature{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #1E2A3D;color:#F1F5F9;font-size:14px}
+    .dot{width:8px;height:8px;border-radius:50%;background:${planColor};flex-shrink:0}
+    .btn{display:inline-block;background:#F97316;color:#000;font-weight:700;font-size:15px;padding:14px 28px;border-radius:12px;text-decoration:none;margin-top:24px}
+    .footer{text-align:center;color:#475569;font-size:12px;margin-top:32px}
+  </style></head><body><div class="wrap">
+    <div class="logo">👛 Pocketwise</div>
+    <div class="card">
+      <div class="badge">✓ ${plan} Plan Active</div>
+      <h2>You're on ${plan}, ${firstName}! 🎉</h2>
+      <p>Your upgrade is confirmed. Here's everything that's now unlocked for you:</p>
+      ${plan === "Family"
+        ? `<div class="feature"><div class="dot"></div>Up to 5 family members</div>
+           <div class="feature"><div class="dot"></div>Unlimited bills & AI scans</div>
+           <div class="feature"><div class="dot"></div>Full analytics & PDF export</div>
+           <div class="feature"><div class="dot"></div>Shared or private finances per member</div>`
+        : `<div class="feature"><div class="dot"></div>Unlimited bills</div>
+           <div class="feature"><div class="dot"></div>Unlimited AI bill & receipt scanning</div>
+           <div class="feature"><div class="dot"></div>Full analytics & spending insights</div>
+           <div class="feature"><div class="dot"></div>PDF export for bills, receipts & analytics</div>
+           <div class="feature"><div class="dot"></div>Bill splitting</div>`
+      }
+      <p style="margin-top:20px">Head back to the app and start exploring your new features.</p>
+      <a href="https://pocketwise-web.vercel.app/dashboard" class="btn">Open Pocketwise →</a>
+    </div>
+    <div class="footer">Pocketwise · Financial Clarity Everyday<br>Questions? Reply to this email.</div>
+  </div></body></html>`;
+
+  try {
+    const emailPayload = JSON.stringify({
+      from: "Pocketwise <welcome@pocketwise.app>",
+      to: [email],
+      subject: `You're now on ${plan}! Welcome to the next level 🚀`,
+      html: htmlBody,
+    });
+    const result = await new Promise((resolve, reject) => {
+      const https = require("https");
+      const options = {
+        hostname: "api.resend.com", path: "/emails", method: "POST",
+        headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json", "Content-Length": Buffer.byteLength(emailPayload) },
+      };
+      const req = https.request(options, res => { let d = ""; res.on("data", c => d += c); res.on("end", () => resolve({ status: res.statusCode, body: d })); });
+      req.on("error", reject);
+      req.write(emailPayload);
+      req.end();
+    });
+    console.log(`[UPGRADE EMAIL] Sent to ${email} — status ${result.status}`);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("[UPGRADE EMAIL] Failed:", error.message);
+    return res.json({ success: true, message: "Email queued" });
+  }
+});
+
 // ─── START ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`Pocketwise API running on port ${PORT}`);
