@@ -1,4 +1,4 @@
-const express = require("express");
+﻿const express = require("express");
 const https = require("https");
 
 const app = express();
@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 if (!ANTHROPIC_API_KEY) { console.error("FATAL: ANTHROPIC_API_KEY not set"); process.exit(1); }
 if (!APP_SECRET) { console.error("FATAL: APP_SECRET not set"); process.exit(1); }
 
-// ─── RATE LIMITER ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ RATE LIMITER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const rateLimitMap = new Map();
 function rateLimit(userId, max = 20, windowMs = 60000) {
   const now = Date.now();
@@ -27,7 +27,7 @@ setInterval(() => {
   for (const [k, v] of rateLimitMap.entries()) { if (now > v.resetAt) rateLimitMap.delete(k); }
 }, 5 * 60 * 1000);
 
-// ─── CORS ──────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ CORS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
@@ -36,8 +36,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// ─── FIREBASE TOKEN VERIFIER ───────────────────────────────────────────────────
-// Cache public keys — they rotate every ~6 hours; we cache for 5 hours to avoid
+// â”€â”€â”€ FIREBASE TOKEN VERIFIER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Cache public keys â€” they rotate every ~6 hours; we cache for 5 hours to avoid
 // making an outbound HTTPS call on every single scan request (which caused
 // intermittent 401s whenever googleapis.com had a brief hiccup).
 let _keyCache = { keys: null, expiresAt: 0 };
@@ -55,7 +55,7 @@ function fetchFirebasePublicKeys() {
             // Cache for 5 hours
             _keyCache = { keys, expiresAt: Date.now() + 5 * 60 * 60 * 1000 };
             resolve(keys);
-          } catch { reject(new Error("Key fetch failed — invalid JSON from Google")); }
+          } catch { reject(new Error("Key fetch failed â€” invalid JSON from Google")); }
         });
       }
     ).on("error", (err) => reject(new Error(`Could not fetch public keys: ${err.message}`)));
@@ -102,7 +102,7 @@ async function verifyFirebaseToken(idToken) {
   return { uid: payload.sub, email: payload.email || "" };
 }
 
-// ─── AUTH MIDDLEWARE ───────────────────────────────────────────────────────────
+// â”€â”€â”€ AUTH MIDDLEWARE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function authenticate(req, res, next) {
   const appSecret = req.headers["x-app-secret"];
   if (!appSecret || appSecret !== APP_SECRET) {
@@ -122,17 +122,17 @@ async function authenticate(req, res, next) {
   }
 }
 
-// ─── PAYMENT CONFIG ───────────────────────────────────────────────────────────
+// â”€â”€â”€ PAYMENT CONFIG â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const GUMROAD_ACCESS_TOKEN  = process.env.GUMROAD_ACCESS_TOKEN  || "";
 const GUMROAD_PRO_ID        = process.env.GUMROAD_PRO_ID        || "";
 const GUMROAD_FAMILY_ID     = process.env.GUMROAD_FAMILY_ID     || "";
 const LUNIPAY_WEBHOOK_SECRET = process.env.LUNIPAY_WEBHOOK_SECRET || "";
 
-// Public Firebase API key (same as in mobile/web apps — safe to include here)
+// Public Firebase API key (same as in mobile/web apps â€” safe to include here)
 const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || "AIzaSyCtkq13sK18fI8jbXp2X9Sj745GPyRvLhE";
 const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
-// In-memory store (fast path) — also write-through to Firestore (survives restarts)
+// In-memory store (fast path) â€” also write-through to Firestore (survives restarts)
 const pendingUpgrades = new Map();
 const pendingByEmail  = new Map();
 
@@ -193,7 +193,7 @@ async function fsDeletePending(key) {
   await firestoreReq("DELETE", `/pendingUpgrades/${docId}`, null);
 }
 
-// ─── GUMROAD WEBHOOK ──────────────────────────────────────────────────────────
+// â”€â”€â”€ GUMROAD WEBHOOK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // POST /api/payments/gumroad-webhook
 // Gumroad fires this on every sale. We extract the UID from custom_fields,
 // determine the plan from product_id, and queue an upgrade for the user.
@@ -207,7 +207,7 @@ app.post("/api/payments/gumroad-webhook", express.urlencoded({ extended: true })
   const saleId = body.sale_id || "";
 
   if (!uid && !email) {
-    console.log("[GUMROAD WEBHOOK] No uid or email — cannot map to user");
+    console.log("[GUMROAD WEBHOOK] No uid or email â€” cannot map to user");
     return res.sendStatus(200); // still 200 so Gumroad doesn't retry
   }
 
@@ -218,7 +218,7 @@ app.post("/api/payments/gumroad-webhook", express.urlencoded({ extended: true })
   const isCancelled = body.subscription_cancelled === "true" || body.ended_at;
 
   if (isRefund || isCancelled) {
-    // Downgrade — store downgrade signal
+    // Downgrade â€” store downgrade signal
     if (uid) pendingUpgrades.set(uid, { plan: "free", source: "gumroad", saleId, at: Date.now() });
     console.log(`[GUMROAD] Downgrade to free for uid=${uid}`);
   } else {
@@ -229,7 +229,7 @@ app.post("/api/payments/gumroad-webhook", express.urlencoded({ extended: true })
   return res.sendStatus(200);
 });
 
-// ─── LUNIPAY WEBHOOK ─────────────────────────────────────────────────────────
+// â”€â”€â”€ LUNIPAY WEBHOOK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // POST /api/payments/lunipay-webhook
 // Lunipay fires this on payment. We key upgrades by email since Lunipay
 // doesn't support success-redirect URLs with our UID embedded.
@@ -253,20 +253,20 @@ app.post("/api/payments/lunipay-webhook", (req, res) => {
     const entry = { plan, source: "lunipay", email, at: Date.now() };
     if (uid)   { pendingUpgrades.set(uid, entry);   fsSetPending(uid, entry); }
     if (email) { pendingByEmail.set(email, uid || email); pendingUpgrades.set(email, entry); fsSetPending(email, entry); }
-    console.log(`[LUNIPAY] Upgrade to ${plan} — uid=${uid || "unknown"} email=${email}`);
+    console.log(`[LUNIPAY] Upgrade to ${plan} â€” uid=${uid || "unknown"} email=${email}`);
   } else if (isCancelled) {
     const entry = { plan: "free", source: "lunipay", email, at: Date.now() };
     if (uid)   { pendingUpgrades.set(uid,   entry); fsSetPending(uid, entry); }
     if (email) { pendingUpgrades.set(email, entry); fsSetPending(email, entry); }
-    console.log(`[LUNIPAY] Downgrade to free — email=${email}`);
+    console.log(`[LUNIPAY] Downgrade to free â€” email=${email}`);
   } else {
-    console.log(`[LUNIPAY] Unhandled status: ${status} — full body: ${JSON.stringify(body)}`);
+    console.log(`[LUNIPAY] Unhandled status: ${status} â€” full body: ${JSON.stringify(body)}`);
   }
 
   return res.sendStatus(200);
 });
 
-// ─── VERIFY GUMROAD LICENSE ──────────────────────────────────────────────────
+// â”€â”€â”€ VERIFY GUMROAD LICENSE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // POST /api/payments/verify-license (authenticated)
 // Called by the client after a successful Gumroad purchase redirect.
 // Verifies the license key with Gumroad and returns the plan.
@@ -276,7 +276,7 @@ app.post("/api/payments/verify-license", authenticate, async (req, res) => {
 
   if (!license_key) return res.status(400).json({ error: "license_key required" });
   if (!GUMROAD_ACCESS_TOKEN) {
-    // No token configured — trust the client (for testing without Gumroad set up)
+    // No token configured â€” trust the client (for testing without Gumroad set up)
     pendingUpgrades.set(uid, { plan: plan || "pro", source: "gumroad_manual", at: Date.now() });
     return res.json({ success: true, plan: plan || "pro", verified: false });
   }
@@ -323,10 +323,10 @@ app.post("/api/payments/verify-license", authenticate, async (req, res) => {
   }
 });
 
-// ─── GET PENDING UPGRADE ─────────────────────────────────────────────────────
+// â”€â”€â”€ GET PENDING UPGRADE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // GET /api/payments/pending (authenticated)
 // Client calls this after tapping "I've paid". Checks by UID first, then by
-// the user's email — so Lunipay webhooks (email-only) are found correctly.
+// the user's email â€” so Lunipay webhooks (email-only) are found correctly.
 // Falls back to Firestore so Railway restarts don't lose pending payments.
 app.get("/api/payments/pending", authenticate, async (req, res) => {
   const { uid, email } = req.user;
@@ -344,7 +344,7 @@ app.get("/api/payments/pending", authenticate, async (req, res) => {
 
   if (!pending) return res.json({ pending: null });
 
-  // Consume — client applies upgrade to Firestore
+  // Consume â€” client applies upgrade to Firestore
   pendingUpgrades.delete(uid);
   if (emailKey) pendingUpgrades.delete(emailKey);
   fsDeletePending(uid);
@@ -354,12 +354,12 @@ app.get("/api/payments/pending", authenticate, async (req, res) => {
   return res.json({ pending });
 });
 
-// ─── HEALTH CHECK ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ HEALTH CHECK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get("/health", (req, res) => {
   res.json({ status: "ok", service: "Pocketwise API", timestamp: new Date().toISOString() });
 });
 
-// ─── BILL SCAN ENDPOINT ────────────────────────────────────────────────────────
+// â”€â”€â”€ BILL SCAN ENDPOINT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post("/api/scan-bill", authenticate, async (req, res) => {
   const { uid } = req.user;
 
@@ -462,7 +462,7 @@ Common Jamaican billers: JPS, NWC, Flow, Digicel, LIME, Mars Cable, Nycmar, Sagi
   }
 });
 
-// ─── RECEIPT SCAN ENDPOINT ────────────────────────────────────────────────────
+// â”€â”€â”€ RECEIPT SCAN ENDPOINT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // POST /api/scan-receipt
 // Reads a receipt image and extracts merchant, total, items, category, tax
 app.post("/api/scan-receipt", authenticate, async (req, res) => {
@@ -571,7 +571,7 @@ If this is not a receipt, return: {"error": "Not a receipt"}`;
   }
 });
 
-// ─── WELCOME EMAIL ────────────────────────────────────────────────────────────
+// â”€â”€â”€ WELCOME EMAIL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // POST /api/send-welcome
 // Sends a branded welcome email to new users via Resend
 // Called from signup.tsx after account creation
@@ -585,7 +585,7 @@ app.post("/api/send-welcome", authenticate, async (req, res) => {
 
   const RESEND_API_KEY = process.env.RESEND_API_KEY;
   if (!RESEND_API_KEY) {
-    console.log("[WELCOME] RESEND_API_KEY not set — skipping email");
+    console.log("[WELCOME] RESEND_API_KEY not set â€” skipping email");
     return res.json({ success: true, message: "Email skipped (no API key)" });
   }
 
@@ -613,24 +613,24 @@ app.post("/api/send-welcome", authenticate, async (req, res) => {
     <body>
       <div class="container">
         <div class="header">
-          <h1>👛 Pocketwise</h1>
+          <h1>ðŸ‘› Pocketwise</h1>
           <p>Smart today. Secure tomorrow.</p>
         </div>
         <div class="body">
-          <h2>Welcome, ${firstName}! 🎉</h2>
+          <h2>Welcome, ${firstName}! ðŸŽ‰</h2>
           <p>Your Pocketwise account is ready. You now have everything you need to take control of your bills and never miss a payment again.</p>
           
-          <div class="feature"><span>📱 &nbsp; Scan bills with AI — just take a photo</span></div>
-          <div class="feature"><span>🔔 &nbsp; Get reminders before bills are due</span></div>
-          <div class="feature"><span>🏦 &nbsp; Pay directly through your banking app</span></div>
-          <div class="feature"><span>📊 &nbsp; Track spending with receipts & analytics</span></div>
+          <div class="feature"><span>ðŸ“± &nbsp; Scan bills with AI â€” just take a photo</span></div>
+          <div class="feature"><span>ðŸ”” &nbsp; Get reminders before bills are due</span></div>
+          <div class="feature"><span>ðŸ¦ &nbsp; Pay directly through your banking app</span></div>
+          <div class="feature"><span>ðŸ“Š &nbsp; Track spending with receipts & analytics</span></div>
           
           <p style="margin-top: 24px;">Open Pocketwise on your phone to add your first bill and see how easy it is.</p>
           
-          <p style="color: #64748B; font-size: 13px;">You're on the <strong style="color: #F97316;">Free plan</strong> — 3 bills and 10 AI scans included. Upgrade anytime for unlimited access.</p>
+          <p style="color: #64748B; font-size: 13px;">You're on the <strong style="color: #F97316;">Free plan</strong> â€” 3 bills and 10 AI scans included. Upgrade anytime for unlimited access.</p>
         </div>
         <div class="footer">
-          <p>Pocketwise · support@pocketwise.app · You're receiving this because you created an account.</p>
+          <p>Pocketwise Â· support@pocketwise.app Â· You're receiving this because you created an account.</p>
         </div>
       </div>
     </body>
@@ -639,9 +639,9 @@ app.post("/api/send-welcome", authenticate, async (req, res) => {
 
   try {
     const emailPayload = JSON.stringify({
-      from: "Pocketwise <welcome@pocketwise.app>",
+      from: "Pocketwise <onboarding@resend.dev>",
       to: [email],
-      subject: `Welcome to Pocketwise, ${firstName}! 🎉`,
+      subject: `Welcome to Pocketwise, ${firstName}! ðŸŽ‰`,
       html: htmlBody,
     });
 
@@ -666,7 +666,7 @@ app.post("/api/send-welcome", authenticate, async (req, res) => {
       req.end();
     });
 
-    console.log(`[WELCOME] Email sent to ${email} — status ${result.status}`);
+    console.log(`[WELCOME] Email sent to ${email} â€” status ${result.status}`);
     return res.json({ success: true });
   } catch (error) {
     console.error("[WELCOME] Failed to send email:", error.message);
@@ -675,7 +675,7 @@ app.post("/api/send-welcome", authenticate, async (req, res) => {
   }
 });
 
-// ─── UPGRADE EMAIL ────────────────────────────────────────────────────────────
+// â”€â”€â”€ UPGRADE EMAIL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // POST /api/send-upgrade
 // Sends a branded upgrade confirmation email via Resend
 app.post("/api/send-upgrade", authenticate, async (req, res) => {
@@ -684,7 +684,7 @@ app.post("/api/send-upgrade", authenticate, async (req, res) => {
 
   const RESEND_API_KEY = process.env.RESEND_API_KEY;
   if (!RESEND_API_KEY) {
-    console.log("[UPGRADE EMAIL] RESEND_API_KEY not set — skipping");
+    console.log("[UPGRADE EMAIL] RESEND_API_KEY not set â€” skipping");
     return res.json({ success: true, message: "Email skipped (no API key)" });
   }
 
@@ -702,10 +702,10 @@ app.post("/api/send-upgrade", authenticate, async (req, res) => {
     .btn{display:inline-block;background:#F97316;color:#000;font-weight:700;font-size:15px;padding:14px 28px;border-radius:12px;text-decoration:none;margin-top:24px}
     .footer{text-align:center;color:#475569;font-size:12px;margin-top:32px}
   </style></head><body><div class="wrap">
-    <div class="logo">👛 Pocketwise</div>
+    <div class="logo">ðŸ‘› Pocketwise</div>
     <div class="card">
-      <div class="badge">✓ ${plan} Plan Active</div>
-      <h2>You're on ${plan}, ${firstName}! 🎉</h2>
+      <div class="badge">âœ“ ${plan} Plan Active</div>
+      <h2>You're on ${plan}, ${firstName}! ðŸŽ‰</h2>
       <p>Your upgrade is confirmed. Here's everything that's now unlocked for you:</p>
       ${plan === "Family"
         ? `<div class="feature"><div class="dot"></div>Up to 5 family members</div>
@@ -719,16 +719,16 @@ app.post("/api/send-upgrade", authenticate, async (req, res) => {
            <div class="feature"><div class="dot"></div>Bill splitting</div>`
       }
       <p style="margin-top:20px">Head back to the app and start exploring your new features.</p>
-      <a href="https://pocketwise-web.vercel.app/dashboard" class="btn">Open Pocketwise →</a>
+      <a href="https://pocketwise-web.vercel.app/dashboard" class="btn">Open Pocketwise â†’</a>
     </div>
-    <div class="footer">Pocketwise · Financial Clarity Everyday<br>Questions? Reply to this email.</div>
+    <div class="footer">Pocketwise Â· Financial Clarity Everyday<br>Questions? Reply to this email.</div>
   </div></body></html>`;
 
   try {
     const emailPayload = JSON.stringify({
-      from: "Pocketwise <welcome@pocketwise.app>",
+      from: "Pocketwise <onboarding@resend.dev>",
       to: [email],
-      subject: `You're now on ${plan}! Welcome to the next level 🚀`,
+      subject: `You're now on ${plan}! Welcome to the next level ðŸš€`,
       html: htmlBody,
     });
     const result = await new Promise((resolve, reject) => {
@@ -742,7 +742,7 @@ app.post("/api/send-upgrade", authenticate, async (req, res) => {
       req.write(emailPayload);
       req.end();
     });
-    console.log(`[UPGRADE EMAIL] Sent to ${email} — status ${result.status}`);
+    console.log(`[UPGRADE EMAIL] Sent to ${email} â€” status ${result.status}`);
     return res.json({ success: true });
   } catch (error) {
     console.error("[UPGRADE EMAIL] Failed:", error.message);
@@ -750,7 +750,7 @@ app.post("/api/send-upgrade", authenticate, async (req, res) => {
   }
 });
 
-// ─── START ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ START â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.listen(PORT, () => {
   console.log(`Pocketwise API running on port ${PORT}`);
 });
