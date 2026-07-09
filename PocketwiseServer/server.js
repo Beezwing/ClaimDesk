@@ -12,6 +12,20 @@ const PORT = process.env.PORT || 3000;
 if (!ANTHROPIC_API_KEY) { console.error("FATAL: ANTHROPIC_API_KEY not set"); process.exit(1); }
 if (!APP_SECRET) { console.error("FATAL: APP_SECRET not set"); process.exit(1); }
 
+// --- RESEND EMAIL HELPER -------------------------------------------------------
+function sendResendEmail(to, subject, html) {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) { console.log("[EMAIL] RESEND_API_KEY not set - skipping:", subject); return; }
+  const payload = JSON.stringify({ from: "Pocketwise <onboarding@resend.dev>", to: [to], subject, html });
+  const opts = {
+    hostname: "api.resend.com", path: "/emails", method: "POST",
+    headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) },
+  };
+  const r = https.request(opts, res => { let d = ""; res.on("data", c => d += c); res.on("end", () => console.log("[EMAIL] Sent to", to, "status", res.statusCode)); });
+  r.on("error", e => console.log("[EMAIL] Error:", e.message));
+  r.write(payload); r.end();
+}
+
 // â”€â”€â”€ RATE LIMITER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const rateLimitMap = new Map();
 function rateLimit(userId, max = 20, windowMs = 60000) {
@@ -234,33 +248,62 @@ app.post("/api/payments/gumroad-webhook", express.urlencoded({ extended: true })
 // Lunipay fires this on payment. We key upgrades by email since Lunipay
 // doesn't support success-redirect URLs with our UID embedded.
 app.post("/api/payments/lunipay-webhook", (req, res) => {
+  // Verify webhook secret — must match the secret appended to the webhook URL
+  if (LUNIPAY_WEBHOOK_SECRET) {
+    const provided = req.query.secret || req.headers["x-webhook-secret"] || "";
+    if (provided !== LUNIPAY_WEBHOOK_SECRET) {
+      console.log("[LUNIPAY WEBHOOK] Rejected - bad secret");
+      return res.sendStatus(403);
+    }
+  }
   const body = req.body;
   console.log("[LUNIPAY WEBHOOK]", JSON.stringify(body).slice(0, 500));
 
-  // Lunipay sends customer email + any metadata set on the payment link
   const email  = (body?.customer?.email || body?.email || body?.customer_email || "").toLowerCase().trim();
   const uid    = body?.metadata?.uid  || body?.uid  || "";
-  const plan   = body?.metadata?.plan || body?.plan || "pro";
+  const rawPlan = body?.metadata?.plan || body?.plan || "";
+  const productStr = JSON.stringify(body?.product || body?.checkout || body?.payment_link || body?.link || "").toLowerCase();
+  const plan = rawPlan || (productStr.includes("family") ? "family" : "pro");
   const status = body?.status || body?.payment_status || body?.event || "";
 
-  // Treat any webhook as "paid" unless it is explicitly a failure/refund/cancellation.
-  // Lunipay only POSTs webhooks for successful payments in practice.
-  const isCancelled  = Boolean(status) && ["refunded","cancelled","failed","payment.failed","charge.failed",
+  const isCancelled = Boolean(status) && ["refunded","cancelled","failed","payment.failed","charge.failed",
     "checkout.session.expired","subscription_cancelled","payment_failed","charge_failed"].some(s => status.toLowerCase().includes(s));
-  const isPaid       = !isCancelled;
+  const isPaid = !isCancelled;
 
   if (isPaid) {
     const entry = { plan, source: "lunipay", email, at: Date.now() };
     if (uid)   { pendingUpgrades.set(uid, entry);   fsSetPending(uid, entry); }
     if (email) { pendingByEmail.set(email, uid || email); pendingUpgrades.set(email, entry); fsSetPending(email, entry); }
-    console.log(`[LUNIPAY] Upgrade to ${plan} â€” uid=${uid || "unknown"} email=${email}`);
+    console.log("[LUNIPAY] Upgrade to " + plan + " - uid=" + (uid || "unknown") + " email=" + email);
+    if (email) {
+      const planLabel = plan === "family" ? "Family" : "Pro";
+      const successHtml =
+        "<div style='font-family:sans-serif;max-width:520px;margin:auto;padding:32px;background:#080C14;color:#F1F5F9;border-radius:16px'>" +
+        "<h2 style='color:#F97316;margin-top:0'>Payment confirmed &#10003;</h2>" +
+        "<p>Your <strong>Pocketwise " + planLabel + "</strong> subscription has been renewed successfully.</p>" +
+        "<p style='color:#94A3B8;font-size:14px'>All features are unlocked and active. No action needed on your end.</p>" +
+        "<p style='color:#64748B;font-size:12px;margin-top:24px'>To manage or cancel your subscription visit " +
+        "<a href='https://www.lunipay.io/account' style='color:#F97316'>lunipay.io/account</a>.</p></div>";
+      sendResendEmail(email, "Your Pocketwise " + planLabel + " subscription is active!", successHtml);
+    }
   } else if (isCancelled) {
     const entry = { plan: "free", source: "lunipay", email, at: Date.now() };
     if (uid)   { pendingUpgrades.set(uid,   entry); fsSetPending(uid, entry); }
     if (email) { pendingUpgrades.set(email, entry); fsSetPending(email, entry); }
-    console.log(`[LUNIPAY] Downgrade to free â€” email=${email}`);
+    console.log("[LUNIPAY] Downgrade to free - email=" + email);
+    if (email) {
+      const failHtml =
+        "<div style='font-family:sans-serif;max-width:520px;margin:auto;padding:32px;background:#080C14;color:#F1F5F9;border-radius:16px'>" +
+        "<h2 style='color:#EF4444;margin-top:0'>Payment failed</h2>" +
+        "<p>We were unable to process your Pocketwise subscription payment. Your account has been downgraded to the <strong>Free plan</strong>.</p>" +
+        "<p>To reactivate Pro or Family, update your payment method and subscribe again:</p>" +
+        "<a href='https://pocketwise-web.vercel.app' style='display:inline-block;margin-top:12px;padding:12px 24px;background:#F97316;color:#080C14;font-weight:700;border-radius:10px;text-decoration:none'>Reactivate my plan</a>" +
+        "<p style='color:#64748B;font-size:12px;margin-top:24px'>To update your card visit " +
+        "<a href='https://www.lunipay.io/account' style='color:#F97316'>lunipay.io/account</a>.</p></div>";
+      sendResendEmail(email, "Action required: Your Pocketwise payment failed", failHtml);
+    }
   } else {
-    console.log(`[LUNIPAY] Unhandled status: ${status} â€” full body: ${JSON.stringify(body)}`);
+    console.log("[LUNIPAY] Unhandled status: " + status + " - body: " + JSON.stringify(body).slice(0,200));
   }
 
   return res.sendStatus(200);
@@ -355,6 +398,84 @@ app.get("/api/payments/pending", authenticate, async (req, res) => {
 });
 
 // â”€â”€â”€ HEALTH CHECK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- DAILY SUBSCRIPTION EXPIRY CHECK -----------------------------------------
+// Runs every 24h. Queries Firestore for paid users past their renewsAt date
+// and downgrades them + sends a payment-failed email as a safety net in case
+// the Lunipay webhook was missed.
+async function runExpiryCheck() {
+  const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || "";
+  if (!FIREBASE_API_KEY) { console.log("[EXPIRY] FIREBASE_API_KEY not set - skipping"); return; }
+  const now = Date.now();
+  console.log("[EXPIRY] Running subscription expiry check at", new Date().toISOString());
+
+  try {
+    // Structured query: userSettings where subscriptionTier in [pro, family]
+    // and subscriptionRenewsAt < now (grace period: 3 days = 259200000ms)
+    const gracePeriodMs = 3 * 24 * 60 * 60 * 1000;
+    const cutoff = now - gracePeriodMs;
+    const queryBody = {
+      structuredQuery: {
+        from: [{ collectionId: "userSettings" }],
+        where: {
+          compositeFilter: {
+            op: "AND",
+            filters: [
+              { fieldFilter: { field: { fieldPath: "subscriptionTier" }, op: "IN", value: { arrayValue: { values: [{ stringValue: "pro" }, { stringValue: "family" }] } } } },
+              { fieldFilter: { field: { fieldPath: "subscriptionRenewsAt" }, op: "LESS_THAN", value: { integerValue: String(cutoff) } } },
+            ],
+          },
+        },
+        limit: 100,
+      },
+    };
+    const queryStr = JSON.stringify(queryBody);
+    const queryResult = await new Promise((resolve, reject) => {
+      const opts = {
+        hostname: "firestore.googleapis.com",
+        path: "/v1/projects/" + FIREBASE_PROJECT_ID + "/databases/(default)/documents:runQuery?key=" + FIREBASE_API_KEY,
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(queryStr) },
+      };
+      const r = https.request(opts, res => { let d = ""; res.on("data", c => d += c); res.on("end", () => { try { resolve(JSON.parse(d)); } catch { resolve([]); } }); });
+      r.on("error", reject); r.write(queryStr); r.end();
+    });
+
+    const docs = Array.isArray(queryResult) ? queryResult.filter(r => r.document) : [];
+    console.log("[EXPIRY] Found " + docs.length + " expired paid users");
+
+    for (const row of docs) {
+      const fields = row.document.fields || {};
+      const uid = row.document.name.split("/").pop();
+      const email = fields.email?.stringValue || "";
+      const tier = fields.subscriptionTier?.stringValue || "";
+      console.log("[EXPIRY] Downgrading uid=" + uid + " email=" + email + " from=" + tier);
+
+      // Downgrade in Firestore
+      await firestoreReq("PATCH",
+        "/userSettings/" + uid + "?updateMask.fieldPaths=subscriptionTier&updateMask.fieldPaths=subscriptionRenewsAt",
+        { fields: { subscriptionTier: { stringValue: "free" }, subscriptionRenewsAt: { integerValue: "0" } } }
+      );
+
+      // Send email if we have an address
+      if (email) {
+        const failHtml =
+          "<div style='font-family:sans-serif;max-width:520px;margin:auto;padding:32px;background:#080C14;color:#F1F5F9;border-radius:16px'>" +
+          "<h2 style='color:#EF4444;margin-top:0'>Subscription expired</h2>" +
+          "<p>Your Pocketwise <strong>" + (tier === "family" ? "Family" : "Pro") + "</strong> subscription has expired and your account has been moved to the Free plan.</p>" +
+          "<p>To continue enjoying unlimited bills, AI scans, and all Pro features, reactivate your subscription:</p>" +
+          "<a href='https://pocketwise-web.vercel.app' style='display:inline-block;margin-top:12px;padding:12px 24px;background:#F97316;color:#080C14;font-weight:700;border-radius:10px;text-decoration:none'>Reactivate my plan</a>" +
+          "<p style='color:#64748B;font-size:12px;margin-top:24px'>To update your payment method visit <a href='https://www.lunipay.io/account' style='color:#F97316'>lunipay.io/account</a>.</p></div>";
+        sendResendEmail(email, "Your Pocketwise subscription has expired", failHtml);
+      }
+    }
+  } catch (e) {
+    console.error("[EXPIRY] Error:", e.message);
+  }
+}
+
+// Run once on startup (after 2 min delay) then every 24h
+setTimeout(runExpiryCheck, 2 * 60 * 1000);
+setInterval(runExpiryCheck, 24 * 60 * 60 * 1000);
 app.get("/health", (req, res) => {
   res.json({ status: "ok", service: "Pocketwise API", timestamp: new Date().toISOString() });
 });
@@ -465,6 +586,194 @@ Common Jamaican billers: JPS, NWC, Flow, Digicel, LIME, Mars Cable, Nycmar, Sagi
 // â”€â”€â”€ RECEIPT SCAN ENDPOINT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // POST /api/scan-receipt
 // Reads a receipt image and extracts merchant, total, items, category, tax
+
+
+// --- NDA SIGNING ENDPOINT -----------------------------------------------------
+// POST /api/sign-nda  (public - no auth required)
+// Called when someone signs the Pocketwise NDA. Sends email to owner + signer.
+app.post("/api/sign-nda", (req, res) => {
+  const { signerName, signerEmail, signedAt } = req.body;
+  if (!signerName || !signerEmail) return res.status(400).json({ error: "Name and email required" });
+
+  const dateStr = signedAt || new Date().toLocaleDateString("en-JM", { day: "numeric", month: "long", year: "numeric" });
+  const ownerEmail = "tuninlifestylemag@gmail.com";
+
+  const ndaHtml =
+    "<div style='font-family:Georgia,serif;max-width:700px;margin:auto;padding:40px;background:#fff;color:#111;border:1px solid #ddd;border-radius:8px'>" +
+    "<div style='text-align:center;margin-bottom:32px'>" +
+    "<img src='https://pocketwise-web.vercel.app/icon.png' width='48' style='border-radius:10px;margin-bottom:8px'>" +
+    "<h1 style='font-size:22px;margin:0;letter-spacing:1px'>POCKETWISE</h1>" +
+    "<h2 style='font-size:16px;font-weight:normal;color:#555;margin:4px 0 0'>Non-Disclosure Agreement</h2>" +
+    "</div>" +
+    "<p style='color:#666;font-size:13px;text-align:center'>Signed by <strong>" + signerName + "</strong> (" + signerEmail + ") on <strong>" + dateStr + "</strong></p>" +
+    "<hr style='border:none;border-top:1px solid #ddd;margin:24px 0'>" +
+    "<p>This Non-Disclosure Agreement (<strong>&ldquo;Agreement&rdquo;</strong>) is entered into as of <strong>" + dateStr + "</strong> between:</p>" +
+    "<p><strong>Disclosing Party:</strong> Damalie / Pocketwise (&ldquo;the Company&rdquo;)</p>" +
+    "<p><strong>Receiving Party:</strong> " + signerName + " (" + signerEmail + ") (&ldquo;Recipient&rdquo;)</p>" +
+    "<h3 style='margin-top:28px'>1. Confidential Information</h3>" +
+    "<p>For purposes of this Agreement, &ldquo;Confidential Information&rdquo; means any and all non-public information disclosed by the Company to the Recipient, whether orally, in writing, electronically, or by any other means, including but not limited to: business plans, financial data and projections, user data and analytics, product features and roadmap, technical architecture, source code, marketing strategies, pricing models, partnerships, and any other information designated as confidential or that reasonably should be understood to be confidential given the nature of the information and the circumstances of disclosure.</p>" +
+    "<h3>2. Obligations of Recipient</h3>" +
+    "<p>The Recipient agrees to: (a) hold all Confidential Information in strict confidence; (b) not disclose any Confidential Information to any third party without prior written consent from the Company; (c) use the Confidential Information solely for the purpose of evaluating a potential business relationship with the Company; and (d) protect the Confidential Information using the same degree of care it uses to protect its own confidential information, but in no event less than reasonable care.</p>" +
+    "<h3>3. Exclusions</h3>" +
+    "<p>This Agreement does not apply to information that: (a) is or becomes publicly known through no breach of this Agreement; (b) was rightfully known to the Recipient before disclosure; (c) is independently developed by the Recipient without use of Confidential Information; or (d) is required to be disclosed by law or court order.</p>" +
+    "<h3>4. Term</h3>" +
+    "<p>This Agreement shall remain in effect for a period of two (2) years from the date of signing, unless terminated earlier by mutual written consent.</p>" +
+    "<h3>5. Return of Information</h3>" +
+    "<p>Upon request by the Company, the Recipient shall promptly return or destroy all Confidential Information and any copies thereof.</p>" +
+    "<h3>6. Governing Law</h3>" +
+    "<p>This Agreement shall be governed by and construed in accordance with the laws of Jamaica.</p>" +
+    "<h3>7. Electronic Signature</h3>" +
+    "<p>The parties agree that an electronic signature or acceptance via digital checkbox constitutes a legally binding signature for the purposes of this Agreement.</p>" +
+    "<hr style='border:none;border-top:2px solid #111;margin:32px 0 16px'>" +
+    "<p style='font-size:13px;color:#333'><strong>Signed electronically by:</strong><br>" +
+    "<span style='font-size:18px;font-family:cursive'>" + signerName + "</span><br>" +
+    "<span style='color:#666;font-size:12px'>" + signerEmail + " &mdash; " + dateStr + "</span></p>" +
+    "</div>";
+
+  // Save to Firestore ndaSigners collection
+  const docId = Date.now() + "_" + signerEmail.replace(/[^a-z0-9]/gi, "_");
+  firestoreReq("PATCH", "/ndaSigners/" + docId, {
+    fields: {
+      name:      { stringValue: signerName },
+      email:     { stringValue: signerEmail },
+      signedAt:  { stringValue: dateStr },
+      timestamp: { integerValue: Date.now().toString() },
+    }
+  }).catch(e => console.log("[NDA] Firestore save failed:", e.message));
+
+  // Email to owner
+  sendResendEmail(ownerEmail, "NDA Signed by " + signerName, ndaHtml);
+  // Copy to signer
+  sendResendEmail(signerEmail, "Your signed NDA with Pocketwise", ndaHtml);
+
+  console.log("[NDA] Signed by " + signerName + " <" + signerEmail + "> on " + dateStr);
+  return res.json({ success: true });
+});
+
+// --- NDA SIGNERS LIST ENDPOINT -----------------------------------------------
+// GET /api/nda-signers  (owner only - requires X-App-Secret header)
+app.get("/api/nda-signers", async (req, res) => {
+  if (req.headers["x-app-secret"] !== APP_SECRET) return res.status(403).json({ error: "Forbidden" });
+  try {
+    const data = await firestoreReq("GET", "/ndaSigners");
+    const docs = (data.documents || []).map(d => ({
+      name:      d.fields?.name?.stringValue || "",
+      email:     d.fields?.email?.stringValue || "",
+      signedAt:  d.fields?.signedAt?.stringValue || "",
+      timestamp: parseInt(d.fields?.timestamp?.integerValue || "0"),
+    }));
+    docs.sort((a, b) => b.timestamp - a.timestamp);
+    return res.json({ signers: docs, total: docs.length });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+// --- VEHICLE DOC SCAN ENDPOINT ------------------------------------------------
+// POST /api/scan-vehicle-doc
+// Reads a vehicle document (fitness, registration, insurance) and extracts
+// expiry date, issue date, provider, reference number, plate, make, model.
+app.post("/api/scan-vehicle-doc", authenticate, async (req, res) => {
+  const { uid } = req.user;
+
+  if (!rateLimit(uid, 10, 60000)) {
+    return res.status(429).json({ error: "Too many scans. Please wait a moment." });
+  }
+
+  const { base64, mimeType, docType } = req.body;
+  if (!base64 || !mimeType) return res.status(400).json({ error: "base64 and mimeType required" });
+  if (base64.length > 10000000) return res.status(400).json({ error: "File too large. Please use a lower quality image." });
+
+  const isImage = mimeType.startsWith("image/");
+  const validTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+
+  const docLabel = docType === "fitness" ? "Certificate of Fitness" : docType === "registration" ? "Registration/Licence" : "Insurance";
+
+  const prompt = "You are a Jamaican vehicle document scanner. Analyze this " + docLabel + " document and extract the information." +
+    " Respond ONLY with a valid JSON object. No explanation, no markdown, no code fences.\n\n" +
+    "{\n" +
+    '  "expiryDate": "YYYY-MM-DD format or empty string if not found",' + "\n" +
+    '  "issueDate": "YYYY-MM-DD format or empty string if not found",' + "\n" +
+    '  "provider": "issuing authority or insurance company name or empty string",' + "\n" +
+    '  "referenceNumber": "certificate, policy, or registration number or empty string",' + "\n" +
+    '  "plateNumber": "vehicle plate number e.g. AB 1234 or empty string",' + "\n" +
+    '  "vehicleMake": "vehicle make e.g. Toyota or empty string",' + "\n" +
+    '  "vehicleModel": "vehicle model e.g. Passo or empty string",' + "\n" +
+    '  "confidence": "high or medium or low"' + "\n" +
+    "}\n\n" +
+    "Notes: Dates are often in DD/MM/YYYY format on Jamaican documents - convert to YYYY-MM-DD." +
+    " For fitness certificates the issuer is TAJ (Tax Administration Jamaica)." +
+    " Common insurers: Sagicor, JMMB, BCIC, GK Insurance, Advantage General, Guardian Life.";
+
+  let messageContent;
+  if (isImage) {
+    messageContent = [
+      { type: "image", source: { type: "base64", media_type: validTypes.includes(mimeType) ? mimeType : "image/jpeg", data: base64 } },
+      { type: "text", text: prompt },
+    ];
+  } else {
+    messageContent = [
+      { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } },
+      { type: "text", text: prompt },
+    ];
+  }
+
+  try {
+    console.log("[VEHICLE SCAN] User " + uid + " scanning " + docType + " " + mimeType);
+    const requestBody = JSON.stringify({
+      model: "claude-haiku-4-5",
+      max_tokens: 500,
+      messages: [{ role: "user", content: messageContent }],
+    });
+
+    const result = await new Promise((resolve, reject) => {
+      const options = {
+        hostname: "api.anthropic.com",
+        path: "/v1/messages",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "Content-Length": Buffer.byteLength(requestBody),
+        },
+      };
+      const apiReq = https.request(options, (apiRes) => {
+        let data = "";
+        apiRes.on("data", (c) => (data += c));
+        apiRes.on("end", () => {
+          if (apiRes.statusCode !== 200) {
+            reject(new Error("Anthropic error: " + apiRes.statusCode + " - " + data.slice(0, 200)));
+            return;
+          }
+          try { resolve(JSON.parse(data)); }
+          catch (e) { reject(new Error("Invalid JSON from Anthropic")); }
+        });
+      });
+      apiReq.setTimeout(28000, () => { apiReq.destroy(); reject(new Error("Scan timed out")); });
+      apiReq.on("error", reject);
+      apiReq.write(requestBody);
+      apiReq.end();
+    });
+
+    const textContent = result.content?.filter((c) => c.type === "text").map((c) => c.text).join("") || "";
+    if (!textContent) return res.status(500).json({ error: "No response from AI" });
+
+    const clean = textContent.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
+    let extracted;
+    try {
+      extracted = JSON.parse(clean);
+    } catch {
+      return res.status(500).json({ error: "AI returned unreadable response" });
+    }
+
+    console.log("[VEHICLE SCAN] Success uid=" + uid + " plate=" + extracted.plateNumber + " confidence=" + extracted.confidence);
+    return res.json({ success: true, data: extracted });
+
+  } catch (error) {
+    console.error("[VEHICLE SCAN] Error for " + uid + ":", error.message);
+    return res.status(500).json({ error: "Failed to scan document. Please try again." });
+  }
+});
 app.post("/api/scan-receipt", authenticate, async (req, res) => {
   const { uid } = req.user;
 
