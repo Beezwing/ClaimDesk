@@ -14,6 +14,10 @@
 # never hide or untrack something git already knows about) — this only
 # stops NEW, unrelated files from ever being picked up by a broad `add`.
 #
+# ClaimDesk itself lives right here at the repo root (index.html, src/,
+# public/, netlify/, package.json, etc.) — a stale duplicate copy that
+# used to sit in a ClaimDesk/ subfolder was removed 2026-09-17.
+#
 # Adding a new file to ClaimDesk itself? Add its path below.
 # Anything else does not belong in this repository.
 
@@ -33,7 +37,6 @@
 !/netlify/
 !/public/
 !/src/
-!/ClaimDesk/
 !/PocketwiseServer/
 
 !/.claude/
