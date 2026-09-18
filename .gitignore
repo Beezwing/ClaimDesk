@@ -1,29 +1,41 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# SAFETY LOCKDOWN — read before touching this file.
+#
+# This git repository's root ended up being C:\Users\User (your whole
+# home directory) instead of C:\Users\User\ClaimDesk. That's a mistake
+# from early on, not something worth a risky history rewrite to fix
+# right now — but left alone, a single `git add -A` or `git add .` run
+# anywhere in this repo would stage every other project, every .env
+# file, every credential on this machine for a push to
+# github.com/Beezwing/ClaimDesk.
+#
+# This file closes that hole: everything is ignored by default, and
+# only the paths this repo has always legitimately tracked are allowed
+# back in. Already-tracked files keep working normally (ignore rules
+# never hide or untrack something git already knows about) — this only
+# stops NEW, unrelated files from ever being picked up by a broad `add`.
+#
+# Adding a new file to ClaimDesk itself? Add its path below.
+# Anything else does not belong in this repository.
 
-node_modules
-dist
-dist-ssr
-*.local
+/*
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+!/.gitignore
+!/.env.example
+!/README.md
+!/eslint.config.js
+!/firestore.rules
+!/index.html
+!/netlify.toml
+!/package.json
+!/package-lock.json
+!/vite.config.js
 
-# Environment — never commit secrets
-.env
-.env.local
-.env.production
+!/netlify/
+!/public/
+!/src/
+!/ClaimDesk/
+!/PocketwiseServer/
+
+!/.claude/
+/.claude/*
+!/.claude/launch.json
